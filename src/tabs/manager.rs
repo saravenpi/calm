@@ -18,7 +18,7 @@ pub struct TabManager {
     active_tab_id: Option<usize>,
     next_tab_id: usize,
     next_download_id: Arc<Mutex<usize>>,
-    tab_bar_height: u32,
+    tab_sidebar_width: u32,
     tab_bar_webview: Option<std::rc::Rc<WebView>>,
     download_overlay: Option<std::rc::Rc<WebView>>,
     config: Config,
@@ -112,14 +112,14 @@ fn add_extension_if_needed(path: &PathBuf) -> PathBuf {
 }
 
 impl TabManager {
-    /// Creates a new TabManager instance with the specified tab bar height and configuration.
-    pub fn new(tab_bar_height: u32, config: Config) -> Self {
+    /// Creates a new TabManager instance with the specified tab sidebar width and configuration.
+    pub fn new(tab_sidebar_width: u32, config: Config) -> Self {
         Self {
             tabs: HashMap::new(),
             active_tab_id: None,
             next_tab_id: 1,
             next_download_id: Arc::new(Mutex::new(1)),
-            tab_bar_height,
+            tab_sidebar_width,
             tab_bar_webview: None,
             download_overlay: None,
             config,
@@ -157,11 +157,11 @@ impl TabManager {
         self.next_tab_id += 1;
 
         let window_size = window.inner_size();
-        let content_height = window_size.height.saturating_sub(self.tab_bar_height);
+        let content_width = window_size.width.saturating_sub(self.tab_sidebar_width);
 
         let bounds = Rect {
-            position: LogicalPosition::new(0, self.tab_bar_height as i32).into(),
-            size: LogicalSize::new(window_size.width, content_height).into(),
+            position: LogicalPosition::new(self.tab_sidebar_width as i32, 0).into(),
+            size: LogicalSize::new(content_width, window_size.height).into(),
         };
 
         let cleaned_url = url_cleaner::clean_url(url).unwrap_or_else(|_| url.to_string());
@@ -439,14 +439,19 @@ impl TabManager {
         self.tabs.len()
     }
 
+    /// Returns a reference to the active tab's webview if there is one.
+    pub fn get_active_tab_webview(&self) -> Option<&wry::WebView> {
+        self.active_tab_id.and_then(|id| self.tabs.get(&id).map(|tab| &tab.webview))
+    }
+
     /// Resizes all tabs to fit the current window size.
     pub fn resize_all_tabs(&mut self, window: &Window) {
         let window_size = window.inner_size();
-        let content_height = window_size.height.saturating_sub(self.tab_bar_height);
+        let content_width = window_size.width.saturating_sub(self.tab_sidebar_width);
 
         let bounds = Rect {
-            position: LogicalPosition::new(0, self.tab_bar_height as i32).into(),
-            size: LogicalSize::new(window_size.width, content_height).into(),
+            position: LogicalPosition::new(self.tab_sidebar_width as i32, 0).into(),
+            size: LogicalSize::new(content_width, window_size.height).into(),
         };
 
         for tab in self.tabs.values() {
@@ -454,15 +459,14 @@ impl TabManager {
         }
     }
 
-    /// Resizes all tabs to fit the window size minus the sidebar width.
-    pub fn resize_all_tabs_with_sidebar(&mut self, window: &Window, sidebar_width: u32) {
+    /// Resizes all tabs to fit the window size minus the download sidebar width.
+    pub fn resize_all_tabs_with_sidebar(&mut self, window: &Window, download_sidebar_width: u32) {
         let window_size = window.inner_size();
-        let content_height = window_size.height.saturating_sub(self.tab_bar_height);
-        let content_width = window_size.width.saturating_sub(sidebar_width);
+        let content_width = window_size.width.saturating_sub(self.tab_sidebar_width).saturating_sub(download_sidebar_width);
 
         let bounds = Rect {
-            position: LogicalPosition::new(0, self.tab_bar_height as i32).into(),
-            size: LogicalSize::new(content_width, content_height).into(),
+            position: LogicalPosition::new(self.tab_sidebar_width as i32, 0).into(),
+            size: LogicalSize::new(content_width, window_size.height).into(),
         };
 
         for tab in self.tabs.values() {

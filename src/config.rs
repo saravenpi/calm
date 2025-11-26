@@ -49,20 +49,11 @@ fn default_true() -> bool {
 
 /// UI-related configuration settings for the browser interface.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UiSettings {
-    #[serde(default = "default_opacity")]
-    pub opacity: f32,
-}
-
-fn default_opacity() -> f32 {
-    1.0
-}
+pub struct UiSettings {}
 
 impl Default for UiSettings {
     fn default() -> Self {
-        UiSettings {
-            opacity: 1.0,
-        }
+        UiSettings {}
     }
 }
 

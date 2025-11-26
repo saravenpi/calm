@@ -18,23 +18,29 @@ pub fn get_tab_bar_styles() -> &'static str {
         body {
             font-family: 'gohu', monospace;
             overflow: hidden;
-            background: #000000;
+            background: transparent;
             color: #ffffff;
-            height: 40px;
+            width: 250px;
+            height: 100vh;
             font-size: 11px;
         }
 
         #tab-bar {
             display: flex;
-            align-items: center;
+            flex-direction: column;
+            align-items: stretch;
             background: #000000;
-            border-bottom: 2px solid #ffffff;
-            height: 40px;
-            padding: 0 4px;
-            padding-left: 80px;
+            border-right: 2px solid #ffffff;
+            width: 250px;
+            height: 100vh;
+            padding: 4px;
+            padding-top: 50px;
+            padding-bottom: 44px;
             gap: 2px;
             user-select: none;
             -webkit-app-region: drag;
+            overflow-y: auto;
+            overflow-x: hidden;
         }
 
         body::before {
@@ -42,10 +48,13 @@ pub fn get_tab_bar_styles() -> &'static str {
             position: fixed;
             top: 0;
             left: 0;
-            width: 80px;
-            height: 40px;
+            width: 250px;
+            height: 50px;
             -webkit-app-region: drag;
             pointer-events: none;
+            z-index: 100;
+            background: #000000;
+            border-right: 2px solid #ffffff;
         }
 
         .tab, .new-tab-btn, .reload-btn, .back-btn, .forward-btn, .downloads-btn, .close-tab {
@@ -56,16 +65,16 @@ pub fn get_tab_bar_styles() -> &'static str {
             display: flex;
             align-items: center;
             gap: 4px;
-            padding: 4px 8px;
+            padding: 8px;
             background: #1a1a1a;
             border: 1px solid #ffffff;
             cursor: pointer;
-            max-width: 200px;
-            min-width: 120px;
+            width: 100%;
             transition: none;
             position: relative;
             overflow: hidden;
-            height: 28px;
+            min-height: 32px;
+            flex-shrink: 0;
         }
 
         .tab:hover {
@@ -148,9 +157,20 @@ pub fn get_tab_bar_styles() -> &'static str {
             color: #ffffff;
         }
 
+        .control-group {
+            position: fixed;
+            top: 8px;
+            right: 4px;
+            display: flex;
+            flex-direction: row;
+            gap: 2px;
+            z-index: 101;
+            -webkit-app-region: no-drag;
+        }
+
         .new-tab-btn, .reload-btn, .back-btn, .forward-btn {
-            width: 28px;
-            height: 28px;
+            width: 32px;
+            height: 32px;
             background: #1a1a1a;
             border: 1px solid #ffffff;
             color: #ffffff;
@@ -160,6 +180,7 @@ pub fn get_tab_bar_styles() -> &'static str {
             align-items: center;
             justify-content: center;
             padding: 0;
+            flex-shrink: 0;
         }
 
         .new-tab-btn:hover, .reload-btn:hover, .back-btn:hover, .forward-btn:hover {
@@ -183,9 +204,8 @@ pub fn get_tab_bar_styles() -> &'static str {
         }
 
         .url-bar {
-            flex: 1;
-            max-width: 600px;
-            height: 28px;
+            width: 100%;
+            height: 32px;
             background: #000000;
             border: 1px solid #ffffff;
             color: #ffffff;
@@ -194,8 +214,8 @@ pub fn get_tab_bar_styles() -> &'static str {
             font-family: 'gohu', monospace;
             outline: none;
             transition: none;
-            margin-left: auto;
-            margin-right: 4px;
+            flex-shrink: 0;
+            margin-bottom: 4px;
         }
 
         .url-bar:focus {
@@ -203,36 +223,47 @@ pub fn get_tab_bar_styles() -> &'static str {
         }
 
         .url-bar::placeholder {
-            color: #666666;
+            color: #999999;
         }
 
-        .downloads-btn {
-            width: 28px;
-            height: 28px;
+        .bottom-controls {
+            position: fixed;
+            bottom: 4px;
+            left: 4px;
+            width: 242px;
+            display: flex;
+            flex-direction: row;
+            gap: 2px;
+            z-index: 102;
+            -webkit-app-region: no-drag;
+        }
+
+        .downloads-btn, .settings-btn {
+            width: 50%;
+            height: 36px;
             background: #1a1a1a;
             border: 1px solid #ffffff;
             color: #ffffff;
             cursor: pointer;
             transition: none;
-            margin-right: 4px;
-            position: relative;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 0;
+            flex-shrink: 0;
         }
 
-        .downloads-btn svg {
+        .downloads-btn svg, .settings-btn svg {
             width: 16px;
             height: 16px;
         }
 
-        .downloads-btn:hover {
+        .downloads-btn:hover, .settings-btn:hover {
             background: #ffffff;
             color: #000000;
         }
 
-        .downloads-btn:active {
+        .downloads-btn:active, .settings-btn:active {
             background: #000000;
             color: #ffffff;
         }

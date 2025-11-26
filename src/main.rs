@@ -21,11 +21,11 @@ use tao::platform::macos::WindowBuilderExtMacOS;
 use tabs::TabManager;
 use config::Config;
 
-/// Height of the tab bar UI element in pixels.
-const TAB_BAR_HEIGHT: u32 = 40;
+/// Width of the tab sidebar UI element in pixels.
+const TAB_SIDEBAR_WIDTH: u32 = 250;
 
 /// Width of the download sidebar when visible, in pixels.
-const SIDEBAR_WIDTH: i32 = 360;
+const DOWNLOAD_SIDEBAR_WIDTH: i32 = 360;
 
 /// Converts file:// URLs to calmfile://localhost for custom protocol handling.
 fn convert_file_url(url: &str) -> String {
@@ -111,7 +111,8 @@ fn main() -> wry::Result<()> {
         (convert_file_url(&url), false)
     };
 
-    let tab_manager = Rc::new(RefCell::new(TabManager::new(TAB_BAR_HEIGHT, config.clone())));
+    let config = Rc::new(RefCell::new(config));
+    let tab_manager = Rc::new(RefCell::new(TabManager::new(TAB_SIDEBAR_WIDTH, config.borrow().clone())));
     let tab_bar_webview_ref: Rc<RefCell<Option<Rc<wry::WebView>>>> = Rc::new(RefCell::new(None));
     let download_overlay_ref: Rc<RefCell<Option<Rc<wry::WebView>>>> = Rc::new(RefCell::new(None));
     let sidebar_visible = Rc::new(RefCell::new(false));
@@ -134,10 +135,11 @@ fn main() -> wry::Result<()> {
     let window_size = window.inner_size();
     let tab_bar_webview = Rc::new(
         wry::WebViewBuilder::new()
-            .with_html(&ui::get_complete_tab_bar_html_with_opacity(config.ui.opacity))
+            .with_html(&ui::get_complete_tab_bar_html())
+            .with_transparent(true)
             .with_bounds(wry::Rect {
                 position: tao::dpi::LogicalPosition::new(0, 0).into(),
-                size: tao::dpi::LogicalSize::new(window_size.width, TAB_BAR_HEIGHT).into(),
+                size: tao::dpi::LogicalSize::new(TAB_SIDEBAR_WIDTH, window_size.height).into(),
             })
             .with_ipc_handler({
                 let tab_manager = Rc::clone(&tab_manager);
@@ -145,7 +147,7 @@ fn main() -> wry::Result<()> {
                 let tab_bar_webview_ref = Rc::clone(&tab_bar_webview_ref);
                 let download_overlay_ref = Rc::clone(&download_overlay_ref);
                 let sidebar_visible = Rc::clone(&sidebar_visible);
-                let config = config.clone();
+                let config = Rc::clone(&config);
                 let should_quit = Rc::clone(&should_quit);
                 move |request| {
                     let body = request.body();
@@ -211,7 +213,7 @@ fn main() -> wry::Result<()> {
                                         std::thread::sleep(std::time::Duration::from_millis(10));
                                         let script = "window.toggleVisibility(true);";
                                         let _ = overlay.evaluate_script(script);
-                                        tab_manager.borrow_mut().resize_all_tabs_with_sidebar(&window, SIDEBAR_WIDTH as u32);
+                                        tab_manager.borrow_mut().resize_all_tabs_with_sidebar(&window, DOWNLOAD_SIDEBAR_WIDTH as u32);
                                     } else {
                                         let script = "window.toggleVisibility(false);";
                                         let _ = overlay.evaluate_script(script);
@@ -228,10 +230,62 @@ fn main() -> wry::Result<()> {
                                     None => Ok(()),
                                 };
                             }
+                            Some("open_settings") => {
+                                let settings_html = ui::get_settings_html();
+                                let tab_result = tab_manager.borrow_mut().create_tab_with_html(&window, &settings_html);
+                                if let Ok(tab_id) = tab_result {
+                                    tab_manager.borrow_mut().switch_to_tab(tab_id);
+                                    if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
+                                        let script = format!(
+                                            "window.addTab({}, 'calm://settings'); window.setActiveTab({}); window.updateUrlBar('calm://settings');",
+                                            tab_id,
+                                            tab_id
+                                        );
+                                        let _ = webview.evaluate_script(&script);
+                                    }
+                                }
+                            }
+                            Some("load_settings") => {
+                                if let Some(webview) = tab_manager.borrow().get_active_tab_webview() {
+                                    let cfg = config.borrow();
+                                    let settings_obj = serde_json::json!({
+                                        "defaultUrl": cfg.default_url,
+                                        "searchEngine": cfg.search_engine.split("?q=").next().unwrap_or("https://duckduckgo.com/"),
+                                        "blockTrackers": cfg.privacy.tracking_domain_blocking,
+                                        "blockFingerprinting": cfg.privacy.canvas_fingerprint_protection,
+                                        "blockCookies": true,
+                                    });
+                                    let script = format!("if (window.updateSettings) {{ window.updateSettings({}); }}", settings_obj);
+                                    let _ = webview.evaluate_script(&script);
+                                }
+                            }
+                            Some("save_settings") => {
+                                if let Some(settings) = data["settings"].as_object() {
+                                    let mut cfg = config.borrow_mut();
+
+                                    if let Some(default_url) = settings.get("defaultUrl").and_then(|v| v.as_str()) {
+                                        cfg.default_url = default_url.to_string();
+                                    }
+                                    if let Some(search_engine) = settings.get("searchEngine").and_then(|v| v.as_str()) {
+                                        cfg.search_engine = format!("{}{{}} ", search_engine);
+                                    }
+                                    if let Some(block_trackers) = settings.get("blockTrackers").and_then(|v| v.as_bool()) {
+                                        cfg.privacy.tracking_domain_blocking = block_trackers;
+                                    }
+                                    if let Some(block_fp) = settings.get("blockFingerprinting").and_then(|v| v.as_bool()) {
+                                        cfg.privacy.canvas_fingerprint_protection = block_fp;
+                                        cfg.privacy.webgl_fingerprint_protection = block_fp;
+                                        cfg.privacy.audio_fingerprint_protection = block_fp;
+                                    }
+
+                                    let _ = cfg.save();
+                                }
+                            }
                             Some("navigate_url") => {
                                 if let Some(url_str) = data["url"].as_str() {
+                                    let cfg = config.borrow();
                                     let url = if url_str.is_empty() {
-                                        convert_file_url(&config.default_url)
+                                        convert_file_url(&cfg.default_url)
                                     } else if url_str.contains("://") {
                                         convert_file_url(url_str)
                                     } else {
@@ -244,9 +298,10 @@ fn main() -> wry::Result<()> {
                                         if is_likely_url {
                                             format!("https://{}", url_str)
                                         } else {
-                                            config.format_search_url(url_str)
+                                            cfg.format_search_url(url_str)
                                         }
                                     };
+                                    drop(cfg);
 
                                     let active_tab_id = tab_manager.borrow().get_active_tab_id();
                                     if let Some(tab_id) = active_tab_id {
@@ -286,10 +341,10 @@ fn main() -> wry::Result<()> {
             .with_html(&ui::get_download_overlay_html())
             .with_bounds(wry::Rect {
                 position: tao::dpi::LogicalPosition::new(
-                    (window_size.width as i32) - SIDEBAR_WIDTH,
-                    TAB_BAR_HEIGHT as i32
+                    (window_size.width as i32) - DOWNLOAD_SIDEBAR_WIDTH,
+                    0
                 ).into(),
-                size: tao::dpi::LogicalSize::new(SIDEBAR_WIDTH as u32, window_size.height - TAB_BAR_HEIGHT).into(),
+                size: tao::dpi::LogicalSize::new(DOWNLOAD_SIDEBAR_WIDTH as u32, window_size.height).into(),
             })
             .with_visible(false)
             .build_as_child(window.as_ref())?
@@ -366,7 +421,7 @@ fn main() -> wry::Result<()> {
                         std::thread::sleep(std::time::Duration::from_millis(10));
                         let script = "window.toggleVisibility(true);";
                         let _ = overlay.evaluate_script(script);
-                        tab_manager.borrow_mut().resize_all_tabs_with_sidebar(&window, SIDEBAR_WIDTH as u32);
+                        tab_manager.borrow_mut().resize_all_tabs_with_sidebar(&window, DOWNLOAD_SIDEBAR_WIDTH as u32);
                     } else {
                         let script = "window.toggleVisibility(false);";
                         let _ = overlay.evaluate_script(script);
@@ -399,23 +454,23 @@ fn main() -> wry::Result<()> {
                 let window_size = window.inner_size();
                 let tab_bar_bounds = wry::Rect {
                     position: tao::dpi::LogicalPosition::new(0, 0).into(),
-                    size: tao::dpi::LogicalSize::new(window_size.width, TAB_BAR_HEIGHT).into(),
+                    size: tao::dpi::LogicalSize::new(TAB_SIDEBAR_WIDTH, window_size.height).into(),
                 };
                 let _ = tab_bar_webview.set_bounds(tab_bar_bounds);
 
-                let sidebar_x = (window_size.width as i32) - SIDEBAR_WIDTH;
+                let sidebar_x = (window_size.width as i32) - DOWNLOAD_SIDEBAR_WIDTH;
                 let sidebar_bounds = wry::Rect {
                     position: tao::dpi::LogicalPosition::new(
                         sidebar_x,
-                        TAB_BAR_HEIGHT as i32
+                        0
                     ).into(),
-                    size: tao::dpi::LogicalSize::new(SIDEBAR_WIDTH as u32, window_size.height - TAB_BAR_HEIGHT).into(),
+                    size: tao::dpi::LogicalSize::new(DOWNLOAD_SIDEBAR_WIDTH as u32, window_size.height).into(),
                 };
                 let _ = download_overlay.set_bounds(sidebar_bounds);
 
                 let is_visible = *sidebar_visible.borrow();
                 if is_visible {
-                    tab_manager.borrow_mut().resize_all_tabs_with_sidebar(&window, SIDEBAR_WIDTH as u32);
+                    tab_manager.borrow_mut().resize_all_tabs_with_sidebar(&window, DOWNLOAD_SIDEBAR_WIDTH as u32);
                 } else {
                     tab_manager.borrow_mut().resize_all_tabs(&window);
                 }

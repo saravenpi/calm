@@ -6,7 +6,7 @@ pub use html::get_tab_bar_html_structure;
 pub use styles::get_tab_bar_styles;
 pub use script::get_tab_bar_script;
 
-pub fn get_complete_tab_bar_html_with_opacity(opacity: f32) -> String {
+pub fn get_complete_tab_bar_html() -> String {
     format!(
         r#"<!DOCTYPE html>
 <html>
@@ -16,9 +16,6 @@ pub fn get_complete_tab_bar_html_with_opacity(opacity: f32) -> String {
     <title>Calm Browser</title>
     <style>
         {}
-        body {{
-            opacity: {};
-        }}
     </style>
 </head>
 <body>
@@ -29,7 +26,6 @@ pub fn get_complete_tab_bar_html_with_opacity(opacity: f32) -> String {
 </body>
 </html>"#,
         get_tab_bar_styles(),
-        opacity,
         get_tab_bar_html_structure(),
         get_tab_bar_script()
     )

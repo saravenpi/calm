@@ -4,10 +4,12 @@ pub mod animations;
 pub mod renderers;
 pub mod download_overlay;
 pub mod welcome;
+pub mod settings;
 
-pub use tab_bar::get_complete_tab_bar_html_with_opacity;
+pub use tab_bar::get_complete_tab_bar_html;
 pub use download_overlay::get_download_overlay_html;
 pub use welcome::get_welcome_html;
+pub use settings::get_settings_html;
 pub use animations::{
     get_loading_animation,
     get_navigation_loader,

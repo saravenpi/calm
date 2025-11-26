@@ -81,9 +81,9 @@ pub fn get_tab_bar_script() -> &'static str {
 
             tabEl.onclick = () => window.ipc.postMessage(JSON.stringify({action: 'switch_tab', tabId: tabId}));
 
-            const newTabBtn = document.querySelector('.new-tab-btn');
-            if (newTabBtn && newTabBtn.parentNode) {
-                newTabBtn.parentNode.insertBefore(tabEl, newTabBtn);
+            const tabBar = document.getElementById('tab-bar');
+            if (tabBar) {
+                tabBar.appendChild(tabEl);
             }
 
             setTimeout(() => {
@@ -157,6 +157,10 @@ pub fn get_tab_bar_script() -> &'static str {
             window.ipc.postMessage(JSON.stringify({action: 'toggle_downloads'}));
         };
 
+        window.openSettings = function() {
+            window.ipc.postMessage(JSON.stringify({action: 'open_settings'}));
+        };
+
         window.updateDownloadCount = function(count) {
             const badge = document.getElementById('download-badge');
             const btn = document.getElementById('downloads-btn');
@@ -182,22 +186,21 @@ pub fn get_tab_bar_script() -> &'static str {
             return null;
         };
 
-        let lastKeyEvent = { key: '', time: 0 };
+        let lastShortcutEvent = { key: '', time: 0 };
         const KEY_DEBOUNCE_MS = 300;
 
         document.addEventListener('keydown', (e) => {
-            const now = Date.now();
-            const eventKey = (e.metaKey ? 'meta+' : '') + (e.ctrlKey ? 'ctrl+' : '') + e.key;
-
-            if (lastKeyEvent.key === eventKey && (now - lastKeyEvent.time) < KEY_DEBOUNCE_MS) {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                return false;
-            }
-
-            lastKeyEvent = { key: eventKey, time: now };
-
             if ((e.metaKey || e.ctrlKey) && e.key === 't') {
+                const now = Date.now();
+                const eventKey = 'meta+t';
+
+                if (lastShortcutEvent.key === eventKey && (now - lastShortcutEvent.time) < KEY_DEBOUNCE_MS) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    return false;
+                }
+
+                lastShortcutEvent = { key: eventKey, time: now };
                 e.preventDefault();
                 e.stopImmediatePropagation();
                 window.ipc.postMessage(JSON.stringify({action: 'new_tab'}));
@@ -205,6 +208,16 @@ pub fn get_tab_bar_script() -> &'static str {
             }
 
             if ((e.metaKey || e.ctrlKey) && e.key === 'w') {
+                const now = Date.now();
+                const eventKey = 'meta+w';
+
+                if (lastShortcutEvent.key === eventKey && (now - lastShortcutEvent.time) < KEY_DEBOUNCE_MS) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    return false;
+                }
+
+                lastShortcutEvent = { key: eventKey, time: now };
                 e.preventDefault();
                 e.stopImmediatePropagation();
                 const activeTab = document.querySelector('.tab.active');
