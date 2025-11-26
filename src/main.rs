@@ -125,11 +125,13 @@ fn main() -> wry::Result<()> {
     let hotkey_reload = HotKey::new(Some(cmd_or_ctrl), Code::KeyR);
     let hotkey_focus_url = HotKey::new(Some(cmd_or_ctrl), Code::KeyL);
     let hotkey_toggle_downloads = HotKey::new(Some(cmd_or_ctrl), Code::KeyJ);
+    let hotkey_focus_sidebar = HotKey::new(Some(cmd_or_ctrl), Code::KeyE);
     let hotkey_quit = HotKey::new(Some(cmd_or_ctrl), Code::KeyQ);
 
     hotkey_manager.register(hotkey_reload).expect("Failed to register Cmd+R");
     hotkey_manager.register(hotkey_focus_url).expect("Failed to register Cmd+L");
     hotkey_manager.register(hotkey_toggle_downloads).expect("Failed to register Cmd+J");
+    hotkey_manager.register(hotkey_focus_sidebar).expect("Failed to register Cmd+E");
     hotkey_manager.register(hotkey_quit).expect("Failed to register Cmd+Q");
 
     let window_size = window.inner_size();
@@ -429,6 +431,11 @@ fn main() -> wry::Result<()> {
                         let _ = overlay.set_visible(false);
                         tab_manager.borrow_mut().resize_all_tabs(&window);
                     }
+                }
+            } else if hotkey_id == hotkey_focus_sidebar.id() {
+                if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
+                    let script = "document.body.focus(); if (window.tabs.length > 0 && window.focusedTabIndex < 0) { window.updateFocusedTab(0); }";
+                    let _ = webview.evaluate_script(script);
                 }
             }
         }
