@@ -252,12 +252,12 @@ pub fn get_tab_bar_styles() -> &'static str {
 
         .bottom-controls {
             position: fixed;
-            bottom: 4px;
-            left: 4px;
-            width: 242px;
+            bottom: 12px;
+            left: 12px;
+            width: 226px;
             display: flex;
             flex-direction: row;
-            gap: 2px;
+            gap: 8px;
             z-index: 102;
             -webkit-app-region: no-drag;
         }

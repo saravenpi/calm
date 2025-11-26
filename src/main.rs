@@ -137,6 +137,7 @@ fn main() -> wry::Result<()> {
     let hotkey_toggle_downloads = HotKey::new(Some(cmd_or_ctrl), Code::KeyJ);
     let hotkey_focus_sidebar = HotKey::new(Some(cmd_or_ctrl), Code::KeyE);
     let hotkey_find = HotKey::new(Some(cmd_or_ctrl), Code::KeyF);
+    let hotkey_close_tab = HotKey::new(Some(cmd_or_ctrl), Code::KeyW);
     let hotkey_quit = HotKey::new(Some(cmd_or_ctrl), Code::KeyQ);
 
     hotkey_manager.register(hotkey_reload).expect("Failed to register Cmd+R");
@@ -144,6 +145,7 @@ fn main() -> wry::Result<()> {
     hotkey_manager.register(hotkey_toggle_downloads).expect("Failed to register Cmd+J");
     hotkey_manager.register(hotkey_focus_sidebar).expect("Failed to register Cmd+E");
     hotkey_manager.register(hotkey_find).expect("Failed to register Cmd+F");
+    hotkey_manager.register(hotkey_close_tab).expect("Failed to register Cmd+W");
     hotkey_manager.register(hotkey_quit).expect("Failed to register Cmd+Q");
 
     let window_size = window.inner_size();
@@ -476,6 +478,20 @@ fn main() -> wry::Result<()> {
             } else if hotkey_id == hotkey_find.id() {
                 if let Some(active_webview) = tab_manager.borrow().get_active_tab_webview() {
                     let _ = active_webview.evaluate_script("window.calmStartSearch();");
+                }
+            } else if hotkey_id == hotkey_close_tab.id() {
+                let active_tab_id = tab_manager.borrow().get_active_tab_id();
+                if let Some(tab_id) = active_tab_id {
+                    let tab_count = tab_manager.borrow().get_tab_count();
+                    if tab_count == 1 {
+                        *should_quit.borrow_mut() = true;
+                    } else {
+                        tab_manager.borrow_mut().close_tab(tab_id);
+                        if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
+                            let script = format!("window.removeTab({});", tab_id);
+                            let _ = webview.evaluate_script(&script);
+                        }
+                    }
                 }
             }
         }

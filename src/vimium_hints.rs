@@ -13,8 +13,10 @@ function installVimiumHints() {
     let hintMarkers = [];
     let currentFilter = '';
     let searchMode = false;
+    let searchBarVisible = false;
     let searchIndex = 0;
     let searchMatches = [];
+    let currentSearchQuery = '';
 
     function isVisible(element) {
         const rect = element.getBoundingClientRect();
@@ -214,8 +216,10 @@ function installVimiumHints() {
 
     function startSearch() {
         searchMode = true;
+        searchBarVisible = true;
         searchIndex = 0;
         searchMatches = [];
+        currentSearchQuery = '';
 
         const existingBar = document.getElementById('calm-search-bar');
         if (existingBar) existingBar.remove();
@@ -270,7 +274,10 @@ function installVimiumHints() {
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                nextSearchMatch();
+                if (searchMatches.length > 0) {
+                    searchBarVisible = false;
+                    searchBar.remove();
+                }
             } else if (e.key === 'Escape') {
                 e.preventDefault();
                 endSearch();
@@ -282,6 +289,7 @@ function installVimiumHints() {
         clearHighlights();
         searchMatches = [];
         searchIndex = 0;
+        currentSearchQuery = query;
 
         if (!query) {
             updateSearchCounter();
@@ -381,6 +389,12 @@ function installVimiumHints() {
         scrollToMatch(searchIndex);
     }
 
+    function prevSearchMatch() {
+        if (searchMatches.length === 0) return;
+        searchIndex = (searchIndex - 1 + searchMatches.length) % searchMatches.length;
+        scrollToMatch(searchIndex);
+    }
+
     function updateSearchCounter() {
         const counter = document.getElementById('calm-search-counter');
         if (counter) {
@@ -394,7 +408,10 @@ function installVimiumHints() {
 
     function endSearch() {
         searchMode = false;
+        searchBarVisible = false;
         clearHighlights();
+        searchMatches = [];
+        currentSearchQuery = '';
         const searchBar = document.getElementById('calm-search-bar');
         if (searchBar) searchBar.remove();
     }
@@ -405,8 +422,10 @@ function installVimiumHints() {
     window.calmStartSearch = startSearch;
     window.calmEndSearch = endSearch;
     window.calmNextSearchMatch = nextSearchMatch;
+    window.calmPrevSearchMatch = prevSearchMatch;
     window.calmGetHintMode = () => hintMode;
     window.calmIsSearchMode = () => searchMode;
+    window.calmIsSearchBarVisible = () => searchBarVisible;
 
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
@@ -422,6 +441,16 @@ function installVimiumHints() {
                 e.stopImmediatePropagation();
                 endSearch();
                 return false;
+            } else if (document.activeElement &&
+                      (document.activeElement.tagName === 'INPUT' ||
+                       document.activeElement.tagName === 'TEXTAREA' ||
+                       document.activeElement.tagName === 'SELECT' ||
+                       document.activeElement.isContentEditable)) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                document.activeElement.blur();
+                return false;
             }
         }
 
@@ -431,6 +460,22 @@ function installVimiumHints() {
             e.stopImmediatePropagation();
             filterHints(e.key.toLowerCase());
             return false;
+        }
+
+        if (searchMode && !searchBarVisible) {
+            if (e.key === 'n' && !e.shiftKey) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                nextSearchMatch();
+                return false;
+            } else if (e.key === 'N' || (e.key === 'n' && e.shiftKey)) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                prevSearchMatch();
+                return false;
+            }
         }
     }, true);
 
