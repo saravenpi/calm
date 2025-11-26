@@ -28,13 +28,16 @@ pub fn get_styles() -> &'static str {
 
         .downloads-panel {
             width: 100%;
-            height: 100%;
+            height: 100vh;
             background: #000000;
             display: flex;
             flex-direction: column;
             border-left: 2px solid #ffffff;
             transform: translateX(100%);
             transition: transform 0.1s linear;
+            position: fixed;
+            top: 0;
+            right: 0;
         }
 
         .downloads-content {
@@ -50,9 +53,9 @@ pub fn get_styles() -> &'static str {
             padding: 8px;
             font-size: 11px;
             font-weight: bold;
-            color: #000000;
-            background: #ffffff;
-            border-bottom: 2px solid #ffffff;
+            color: #ffffff;
+            background: #000000;
+            border-bottom: 1px solid #ffffff;
             flex-shrink: 0;
         }
 
