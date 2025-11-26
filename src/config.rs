@@ -52,12 +52,19 @@ fn default_true() -> bool {
 pub struct UiSettings {
     #[serde(default = "default_true")]
     pub vim_mode: bool,
+    #[serde(default = "default_false")]
+    pub debug: bool,
+}
+
+fn default_false() -> bool {
+    false
 }
 
 impl Default for UiSettings {
     fn default() -> Self {
         UiSettings {
             vim_mode: true,
+            debug: false,
         }
     }
 }

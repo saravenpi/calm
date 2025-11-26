@@ -23,8 +23,6 @@ This document tracks features and improvements needed to make Calm a fully usabl
   - [ ] Bookmarks bar
   - [ ] Import/export bookmarks
 - [ ] Reading list
-- [ ] Frequently visited sites
-- [ ] Search suggestions in URL bar
 - [ ] URL bar autocomplete from history
 
 ### User Experience

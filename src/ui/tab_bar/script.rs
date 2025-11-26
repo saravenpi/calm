@@ -5,6 +5,23 @@ pub fn get_tab_bar_script() -> &'static str {
         window.tabAudioState = {};
         window.focusedTabIndex = -1;
         window.lastGKeyTime = 0;
+        window.sidebarFocused = false;
+
+        window.showSidebarFocus = function() {
+            const tabBar = document.getElementById('tab-bar');
+            if (tabBar) {
+                tabBar.classList.add('sidebar-focused');
+                window.sidebarFocused = true;
+            }
+        };
+
+        window.hideSidebarFocus = function() {
+            const tabBar = document.getElementById('tab-bar');
+            if (tabBar) {
+                tabBar.classList.remove('sidebar-focused');
+                window.sidebarFocused = false;
+            }
+        };
 
         window.handleNewTab = function() {
             window.ipc.postMessage(JSON.stringify({action: 'new_tab'}));
@@ -94,7 +111,10 @@ pub fn get_tab_bar_script() -> &'static str {
             tabEl.appendChild(audioIndicator);
             tabEl.appendChild(closeBtn);
 
-            tabEl.onclick = () => window.ipc.postMessage(JSON.stringify({action: 'switch_tab', tabId: tabId}));
+            tabEl.onclick = () => {
+                window.ipc.postMessage(JSON.stringify({action: 'switch_tab', tabId: tabId}));
+                window.hideSidebarFocus();
+            };
 
             const tabBar = document.getElementById('tab-bar');
             if (tabBar) {
@@ -218,6 +238,18 @@ pub fn get_tab_bar_script() -> &'static str {
             }
         };
 
+        window.focusTab = function(index) {
+            if (index >= 0 && index < window.tabs.length) {
+                const tabId = window.tabs[index].id;
+                window.ipc.postMessage(JSON.stringify({
+                    action: 'switch_tab',
+                    tabId: tabId
+                }));
+                window.focusedTabIndex = -1;
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('focused'));
+            }
+        };
+
         window.moveFocusDown = function() {
             if (window.tabs.length === 0) return;
             const newIndex = Math.min(window.focusedTabIndex + 1, window.tabs.length - 1);
@@ -234,6 +266,7 @@ pub fn get_tab_bar_script() -> &'static str {
             if (window.focusedTabIndex >= 0 && window.focusedTabIndex < window.tabs.length) {
                 const tabId = window.tabs[window.focusedTabIndex].id;
                 window.ipc.postMessage(JSON.stringify({action: 'switch_tab', tabId: tabId}));
+                window.hideSidebarFocus();
             }
         };
 

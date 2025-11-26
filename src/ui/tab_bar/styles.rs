@@ -41,6 +41,11 @@ pub fn get_tab_bar_styles() -> &'static str {
             -webkit-app-region: drag;
             overflow-y: auto;
             overflow-x: hidden;
+            transition: border-color 0.15s ease;
+        }
+
+        #tab-bar.sidebar-focused {
+            border-right: 2px solid #ffffff;
         }
 
         body::before {
@@ -87,8 +92,8 @@ pub fn get_tab_bar_styles() -> &'static str {
         }
 
         .tab.focused {
-            outline: 2px solid #ffffff;
-            outline-offset: -2px;
+            background: #ffffff;
+            color: #000000;
         }
 
         .tab.closing {
@@ -268,7 +273,7 @@ pub fn get_tab_bar_styles() -> &'static str {
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 0;
+            padding: 8px;
             flex-shrink: 0;
         }
 

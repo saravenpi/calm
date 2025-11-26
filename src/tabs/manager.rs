@@ -1,8 +1,9 @@
 use super::tab::Tab;
 use crate::privacy;
 use crate::url_cleaner;
-use crate::vim_scroll;
 use crate::config::Config;
+use crate::vimium_hints;
+use crate::debug_log;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -150,12 +151,16 @@ impl TabManager {
     }
 
     fn create_tab_internal(&mut self, window: &Window, url: &str, html: Option<&str>) -> Result<usize, wry::Error> {
+        debug_log!("create_tab_internal called - url: {}, has_html: {}", url, html.is_some());
+
         if self.tabs.len() >= MAX_TABS {
+            debug_log!("Max tabs reached ({}), not creating new tab", MAX_TABS);
             return Ok(self.active_tab_id.unwrap_or(1));
         }
 
         let tab_id = self.next_tab_id;
         self.next_tab_id += 1;
+        debug_log!("Creating new tab with id: {}", tab_id);
 
         let window_size = window.inner_size();
         let content_width = window_size.width.saturating_sub(self.tab_sidebar_width);
@@ -230,12 +235,78 @@ impl TabManager {
                 }
             })
             .with_initialization_script(&{
+                debug_log!("Building initialization script for tab {}", tab_id);
+
                 let privacy_script = privacy::get_combined_privacy_script_with_config(&self.config.privacy);
-                if self.config.ui.vim_mode {
-                    format!("{}\n{}", privacy_script, vim_scroll::get_vim_scroll_script())
+                let vimium_script = if self.config.ui.vim_mode {
+                    debug_log!("Including vimium hints script (vim_mode enabled)");
+                    vimium_hints::get_vimium_hints_script()
                 } else {
-                    privacy_script.to_string()
-                }
+                    debug_log!("Skipping vimium hints script (vim_mode disabled)");
+                    ""
+                };
+
+                let console_override = r#"
+console.log('[INIT] Script injection starting - document exists?', typeof document !== 'undefined');
+console.log('[INIT] window exists?', typeof window !== 'undefined');
+
+(function() {
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalWarn = console.warn;
+
+    console.log = function(...args) {
+        originalLog.apply(console, args);
+        if (window.ipc) {
+            window.ipc.postMessage(JSON.stringify({
+                action: 'console_log',
+                level: 'log',
+                message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')
+            }));
+        }
+    };
+
+    console.error = function(...args) {
+        originalError.apply(console, args);
+        if (window.ipc) {
+            window.ipc.postMessage(JSON.stringify({
+                action: 'console_log',
+                level: 'error',
+                message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')
+            }));
+        }
+    };
+
+    console.warn = function(...args) {
+        originalWarn.apply(console, args);
+        if (window.ipc) {
+            window.ipc.postMessage(JSON.stringify({
+                action: 'console_log',
+                level: 'warn',
+                message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')
+            }));
+        }
+    };
+})();
+
+console.log('[INIT] Console override installed');
+                "#;
+
+                // Wrap privacy script in try-catch to prevent it from blocking vimium script
+                let safe_privacy_script = format!(
+                    "try {{\n{}\n}} catch(e) {{ console.error('[PRIVACY] Error:', e); }}",
+                    privacy_script
+                );
+
+                let combined_script = format!("{}\n{}\n{}", console_override, safe_privacy_script, vimium_script);
+                debug_log!("Initialization script size: {} bytes (console: ~600, privacy: ~{}, vimium: {})",
+                    combined_script.len(),
+                    safe_privacy_script.len(),
+                    vimium_script.len()
+                );
+
+                // Combine all scripts - this runs on every page load
+                combined_script
             })
             .with_download_started_handler(move |url, path| {
                 let download_id = {
@@ -331,14 +402,28 @@ impl TabManager {
                                 let _ = webview.evaluate_script(&script);
                             }
                         }
+                        Some("console_log") => {
+                            let level = data["level"].as_str().unwrap_or("log");
+                            let message = data["message"].as_str().unwrap_or("");
+                            let prefix = match level {
+                                "error" => "[BROWSER ERROR]",
+                                "warn" => "[BROWSER WARN]",
+                                _ => "[BROWSER]"
+                            };
+                            eprintln!("{} {}", prefix, message);
+                        }
                         _ => {}
                     }
                 }
             })
             .build_as_child(window)?;
 
+        debug_log!("Webview built successfully for tab {}", tab_id);
+
         let tab = Tab::new(tab_id, cleaned_url, webview);
         self.tabs.insert(tab_id, tab);
+
+        debug_log!("Tab {} created and inserted into tabs map", tab_id);
 
         Ok(tab_id)
     }

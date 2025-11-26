@@ -1,15 +1,17 @@
 mod config;
+mod debug;
 mod privacy;
 mod tabs;
 mod ui;
 mod url_cleaner;
-mod vim_scroll;
+mod vimium_hints;
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, time::Instant};
 use tao::{
-    event::{Event, WindowEvent},
+    event::{Event, WindowEvent, ElementState},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
+    keyboard::ModifiersState,
 };
 use global_hotkey::{
     GlobalHotKeyManager, GlobalHotKeyEvent,
@@ -72,6 +74,11 @@ fn main() -> wry::Result<()> {
 
     let config = Config::load();
 
+    // Initialize debug logging based on config
+    debug::set_debug_enabled(config.ui.debug);
+    debug_log!("Debug mode enabled");
+    debug_log!("Config loaded: vim_mode={}, debug={}", config.ui.vim_mode, config.ui.debug);
+
     let event_loop = EventLoop::new();
 
     #[cfg(target_os = "macos")]
@@ -118,6 +125,8 @@ fn main() -> wry::Result<()> {
     let download_overlay_ref: Rc<RefCell<Option<Rc<wry::WebView>>>> = Rc::new(RefCell::new(None));
     let sidebar_visible = Rc::new(RefCell::new(false));
     let should_quit = Rc::new(RefCell::new(false));
+    let last_g_key_time = Rc::new(RefCell::new(None::<Instant>));
+    let modifiers_state = Rc::new(RefCell::new(ModifiersState::default()));
 
     let hotkey_manager = GlobalHotKeyManager::new().expect("Failed to create hotkey manager");
 
@@ -127,12 +136,14 @@ fn main() -> wry::Result<()> {
     let hotkey_focus_url = HotKey::new(Some(cmd_or_ctrl), Code::KeyL);
     let hotkey_toggle_downloads = HotKey::new(Some(cmd_or_ctrl), Code::KeyJ);
     let hotkey_focus_sidebar = HotKey::new(Some(cmd_or_ctrl), Code::KeyE);
+    let hotkey_find = HotKey::new(Some(cmd_or_ctrl), Code::KeyF);
     let hotkey_quit = HotKey::new(Some(cmd_or_ctrl), Code::KeyQ);
 
     hotkey_manager.register(hotkey_reload).expect("Failed to register Cmd+R");
     hotkey_manager.register(hotkey_focus_url).expect("Failed to register Cmd+L");
     hotkey_manager.register(hotkey_toggle_downloads).expect("Failed to register Cmd+J");
     hotkey_manager.register(hotkey_focus_sidebar).expect("Failed to register Cmd+E");
+    hotkey_manager.register(hotkey_find).expect("Failed to register Cmd+F");
     hotkey_manager.register(hotkey_quit).expect("Failed to register Cmd+Q");
 
     let window_size = window.inner_size();
@@ -194,6 +205,25 @@ fn main() -> wry::Result<()> {
 
                                         let focus_script = "document.getElementById('url-bar')?.focus();";
                                         let _ = webview.evaluate_script(focus_script);
+                                    }
+                                }
+                            }
+                            Some("open_url_new_tab") => {
+                                if let Some(url) = data["url"].as_str() {
+                                    let tab_result = tab_manager.borrow_mut().create_tab(&window, url);
+                                    if let Ok(tab_id) = tab_result {
+                                        tab_manager.borrow_mut().switch_to_tab(tab_id);
+                                        if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
+                                            let escaped_url = serde_json::to_string(&url).unwrap_or_else(|_| "\"\"".to_string());
+                                            let script = format!(
+                                                "window.addTab({}, {}); window.setActiveTab({}); window.updateUrlBar({});",
+                                                tab_id,
+                                                escaped_url,
+                                                tab_id,
+                                                escaped_url
+                                            );
+                                            let _ = webview.evaluate_script(&script);
+                                        }
                                     }
                                 }
                             }
@@ -440,8 +470,12 @@ fn main() -> wry::Result<()> {
             } else if hotkey_id == hotkey_focus_sidebar.id() {
                 if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
                     let _ = webview.focus();
-                    let script = "if (window.tabs.length > 0) { if (window.focusedTabIndex < 0) { window.updateFocusedTab(0); } else { window.updateFocusedTab(window.focusedTabIndex); } }";
+                    let script = "window.showSidebarFocus(); if (window.tabs.length > 0) { if (window.focusedTabIndex < 0) { window.updateFocusedTab(0); } else { window.updateFocusedTab(window.focusedTabIndex); } }";
                     let _ = webview.evaluate_script(script);
+                }
+            } else if hotkey_id == hotkey_find.id() {
+                if let Some(active_webview) = tab_manager.borrow().get_active_tab_webview() {
+                    let _ = active_webview.evaluate_script("window.calmStartSearch();");
                 }
             }
         }
@@ -486,6 +520,105 @@ fn main() -> wry::Result<()> {
                     tab_manager.borrow_mut().resize_all_tabs_with_sidebar(&window, DOWNLOAD_SIDEBAR_WIDTH as u32);
                 } else {
                     tab_manager.borrow_mut().resize_all_tabs(&window);
+                }
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ModifiersChanged(new_state),
+                ..
+            } => {
+                *modifiers_state.borrow_mut() = new_state;
+            }
+            Event::WindowEvent {
+                event: WindowEvent::KeyboardInput {
+                    event: key_event,
+                    ..
+                },
+                ..
+            } => {
+                if key_event.state == ElementState::Pressed {
+                    let modifiers = *modifiers_state.borrow();
+
+                    debug_log!("Key pressed: {:?}, modifiers: ctrl={}, super={}, alt={}, shift={}",
+                        key_event.logical_key,
+                        modifiers.control_key(),
+                        modifiers.super_key(),
+                        modifiers.alt_key(),
+                        modifiers.shift_key()
+                    );
+
+                    if key_event.logical_key == tao::keyboard::Key::Enter {
+                        debug_log!("Enter key - focusing selected tab");
+                        if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
+                            let script = "if (window.focusedTabIndex >= 0) { window.focusTab(window.focusedTabIndex); }";
+                            let _ = webview.evaluate_script(script);
+                        }
+                        return;
+                    }
+
+
+                    if !config.borrow().ui.vim_mode {
+                        debug_log!("Vim mode disabled, skipping");
+                        return;
+                    }
+
+                    let action_script = match &key_event.logical_key {
+                        tao::keyboard::Key::Character(c) => {
+                            let ch = c.to_string();
+                            let ch_lower = ch.to_lowercase();
+
+                            match ch_lower.as_str() {
+                                "j" => Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && !(window.calmIsSearchMode && window.calmIsSearchMode())) { window.scrollBy({top: 60, behavior: 'smooth'}); }"),
+                                "k" => Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && !(window.calmIsSearchMode && window.calmIsSearchMode())) { window.scrollBy({top: -60, behavior: 'smooth'}); }"),
+                                "h" => Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && !(window.calmIsSearchMode && window.calmIsSearchMode())) { window.scrollBy({left: -40, behavior: 'smooth'}); }"),
+                                "l" => Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && !(window.calmIsSearchMode && window.calmIsSearchMode())) { window.scrollBy({left: 40, behavior: 'smooth'}); }"),
+                                "g" => {
+                                    let is_uppercase = ch.chars().next().unwrap().is_uppercase();
+                                    if is_uppercase {
+                                        Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && !(window.calmIsSearchMode && window.calmIsSearchMode())) { window.scrollTo({top: document.documentElement.scrollHeight, behavior: 'smooth'}); }")
+                                    } else {
+                                        let mut last_time = last_g_key_time.borrow_mut();
+                                        let now = Instant::now();
+
+                                        if let Some(last) = *last_time {
+                                            if now.duration_since(last).as_millis() < 500 {
+                                                *last_time = None;
+                                                Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && !(window.calmIsSearchMode && window.calmIsSearchMode())) { window.scrollTo({top: 0, behavior: 'smooth'}); }")
+                                            } else {
+                                                *last_time = Some(now);
+                                                None
+                                            }
+                                        } else {
+                                            *last_time = Some(now);
+                                            None
+                                        }
+                                    }
+                                }
+                                "f" => {
+                                    let is_uppercase = ch.chars().next().unwrap().is_uppercase();
+                                    if is_uppercase {
+                                        Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && window.calmShowHints) { window.calmShowHints(true); }")
+                                    } else {
+                                        Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && window.calmShowHints) { window.calmShowHints(false); }")
+                                    }
+                                }
+                                "/" => Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && window.calmStartSearch) { window.calmStartSearch(); }"),
+                                _ => None
+                            }
+                        }
+                        _ => None
+                    };
+
+                    if let Some(script) = action_script {
+                        debug_log!("Executing script: {}", &script[..100.min(script.len())]);
+                        if let Some(active_webview) = tab_manager.borrow().get_active_tab_webview() {
+                            let result = active_webview.evaluate_script(script);
+                            debug_log!("Script result: {:?}", result);
+                        } else {
+                            debug_log!("No active webview found!");
+                        }
+                    } else {
+                        debug_log!("No action script for this key");
+                    }
                 }
             }
             _ => {}
