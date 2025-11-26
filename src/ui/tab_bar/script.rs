@@ -11,6 +11,8 @@ pub fn get_tab_bar_script() -> &'static str {
         window.updateUrlBar = function(url) {
             const urlBar = document.getElementById('url-bar');
             const reloadBtn = document.getElementById('reload-btn');
+            const settingsBtn = document.getElementById('settings-btn');
+
             if (urlBar) {
                 if (url === 'about:blank' || url === '') {
                     urlBar.value = '';
@@ -24,6 +26,11 @@ pub fn get_tab_bar_script() -> &'static str {
             if (reloadBtn) {
                 const isCalmPage = url.startsWith('calm://');
                 reloadBtn.disabled = isCalmPage;
+            }
+
+            if (settingsBtn) {
+                const isSettingsPage = url === 'calm://settings';
+                settingsBtn.disabled = isSettingsPage;
             }
         };
 
