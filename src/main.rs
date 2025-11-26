@@ -439,7 +439,8 @@ fn main() -> wry::Result<()> {
                 }
             } else if hotkey_id == hotkey_focus_sidebar.id() {
                 if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
-                    let script = "document.body.focus(); if (window.tabs.length > 0 && window.focusedTabIndex < 0) { window.updateFocusedTab(0); }";
+                    let _ = webview.focus();
+                    let script = "if (window.tabs.length > 0) { if (window.focusedTabIndex < 0) { window.updateFocusedTab(0); } else { window.updateFocusedTab(window.focusedTabIndex); } }";
                     let _ = webview.evaluate_script(script);
                 }
             }
