@@ -3,6 +3,7 @@ pub fn get_tab_bar_script() -> &'static str {
         window.tabs = [];
         window.currentUrl = '';
         window.tabAudioState = {};
+        window.focusedTabIndex = -1;
 
         window.handleNewTab = function() {
             window.ipc.postMessage(JSON.stringify({action: 'new_tab'}));
@@ -128,6 +129,11 @@ pub fn get_tab_bar_script() -> &'static str {
             const tabEl = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
             if (tabEl) {
                 tabEl.classList.add('active');
+                const tabIndex = window.tabs.findIndex(t => t.id === tabId);
+                if (tabIndex >= 0) {
+                    window.focusedTabIndex = tabIndex;
+                    window.updateFocusedTab(tabIndex);
+                }
             }
         };
 
@@ -199,8 +205,88 @@ pub fn get_tab_bar_script() -> &'static str {
             return null;
         };
 
+        window.updateFocusedTab = function(index) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('focused'));
+            if (index >= 0 && index < window.tabs.length) {
+                window.focusedTabIndex = index;
+                const tabEl = document.querySelector(`.tab[data-tab-id="${window.tabs[index].id}"]`);
+                if (tabEl) {
+                    tabEl.classList.add('focused');
+                    tabEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            }
+        };
+
+        window.moveFocusDown = function() {
+            if (window.tabs.length === 0) return;
+            const newIndex = Math.min(window.focusedTabIndex + 1, window.tabs.length - 1);
+            window.updateFocusedTab(newIndex);
+        };
+
+        window.moveFocusUp = function() {
+            if (window.tabs.length === 0) return;
+            const newIndex = Math.max(window.focusedTabIndex - 1, 0);
+            window.updateFocusedTab(newIndex);
+        };
+
+        window.activateFocusedTab = function() {
+            if (window.focusedTabIndex >= 0 && window.focusedTabIndex < window.tabs.length) {
+                const tabId = window.tabs[window.focusedTabIndex].id;
+                window.ipc.postMessage(JSON.stringify({action: 'switch_tab', tabId: tabId}));
+            }
+        };
+
+        window.closeFocusedTab = function() {
+            if (window.focusedTabIndex >= 0 && window.focusedTabIndex < window.tabs.length) {
+                const tabId = window.tabs[window.focusedTabIndex].id;
+                closeTabWithAnimation(tabId);
+                if (window.focusedTabIndex >= window.tabs.length - 1) {
+                    window.focusedTabIndex = Math.max(0, window.tabs.length - 2);
+                }
+                setTimeout(() => {
+                    window.updateFocusedTab(window.focusedTabIndex);
+                }, 50);
+            }
+        };
+
         let lastShortcutEvent = { key: '', time: 0 };
         const KEY_DEBOUNCE_MS = 300;
+
+        document.addEventListener('keydown', (e) => {
+            const urlBar = document.getElementById('url-bar');
+            const isUrlBarFocused = document.activeElement === urlBar;
+
+            if (!isUrlBarFocused) {
+                if (e.key === 'j') {
+                    e.preventDefault();
+                    window.moveFocusDown();
+                    return;
+                } else if (e.key === 'k') {
+                    e.preventDefault();
+                    window.moveFocusUp();
+                    return;
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    window.activateFocusedTab();
+                    return;
+                } else if (e.key === 'd') {
+                    e.preventDefault();
+                    window.closeFocusedTab();
+                    return;
+                } else if (e.key === 'n') {
+                    e.preventDefault();
+                    window.ipc.postMessage(JSON.stringify({action: 'new_tab'}));
+                    return;
+                } else if (e.key === '/') {
+                    e.preventDefault();
+                    if (urlBar) {
+                        urlBar.focus();
+                        urlBar.select();
+                    }
+                    return;
+                }
+            }
+        }, true);
 
         document.addEventListener('keydown', (e) => {
             if ((e.metaKey || e.ctrlKey) && e.key === 't') {

@@ -86,6 +86,11 @@ pub fn get_tab_bar_styles() -> &'static str {
             color: #000000;
         }
 
+        .tab.focused {
+            outline: 2px solid #ffffff;
+            outline-offset: -2px;
+        }
+
         .tab.closing {
             animation: tabClose 0.25s ease-out forwards;
         }
