@@ -1,0 +1,108 @@
+# Calm Browser Configuration Example
+# Copy this file to ~/.calm.yml and customize as needed
+
+# Search engine URL pattern (use {} as placeholder for search query)
+search_engine: https://start.duckduckgo.com/?q={}
+
+# Default URL or file to open when Calm starts without arguments
+default_url: https://start.duckduckgo.com
+
+# Privacy Settings
+# All privacy features are enabled by default
+# Set any to false to disable that specific protection
+privacy:
+  # Hardware Fingerprinting Protection
+  # Spoofs hardware info (CPU cores, RAM, platform, touch points)
+  hardware_spoofing: true
+
+  # Screen Fingerprinting Protection
+  # Normalizes screen resolution to 1920x1080
+  screen_normalization: true
+
+  # Timezone Fingerprinting Protection
+  # Reports UTC timezone to prevent location tracking
+  timezone_normalization: true
+
+  # Battery API Blocking
+  # Prevents battery-based device fingerprinting
+  battery_blocking: true
+
+  # WebRTC Blocking
+  # Prevents IP address leaks through WebRTC
+  # WARNING: Disabling this may expose your real IP address
+  webrtc_blocking: true
+
+  # Media Device Blocking
+  # Blocks enumeration of cameras and microphones
+  media_device_blocking: true
+
+  # Geolocation Blocking
+  # Disables HTML5 geolocation API
+  geolocation_blocking: true
+
+  # Network Info Spoofing
+  # Spoofs connection type and speed information
+  network_info_spoofing: true
+
+  # Storage Quota Spoofing
+  # Normalizes reported storage capacity
+  storage_quota_spoofing: true
+
+  # Permissions API Hardening
+  # Denies sensitive permissions by default
+  permissions_hardening: true
+
+  # Credentials API Blocking
+  # Prevents credential enumeration attacks
+  credentials_blocking: true
+
+  # Privacy Headers
+  # Adds Do-Not-Track and Sec-GPC headers
+  privacy_headers: true
+
+  # Tracking Domain Blocking
+  # Blocks 30+ known tracking domains (Google Analytics, Facebook Pixel, etc.)
+  tracking_domain_blocking: true
+
+  # Canvas Fingerprinting Protection
+  # Adds noise to canvas rendering to prevent fingerprinting
+  canvas_fingerprint_protection: true
+
+  # WebGL Fingerprinting Protection
+  # Spoofs GPU information and adds noise
+  webgl_fingerprint_protection: true
+
+  # Audio Fingerprinting Protection
+  # Adds noise to audio context data
+  audio_fingerprint_protection: true
+
+  # Font Enumeration Restriction
+  # Limits available fonts to 9 standard fonts
+  font_enumeration_restriction: true
+
+# Examples for other configurations:
+# default_url: https://github.com
+# default_url: file:///Users/username/Documents/homepage.html
+# default_url: https://news.ycombinator.com
+# search_engine: https://www.google.com/search?q={}
+# search_engine: https://search.brave.com/search?q={}
+
+# Example: Minimal Privacy Configuration (not recommended)
+# privacy:
+#   hardware_spoofing: false
+#   screen_normalization: false
+#   timezone_normalization: false
+#   battery_blocking: true
+#   webrtc_blocking: true
+#   media_device_blocking: true
+#   geolocation_blocking: true
+#   network_info_spoofing: false
+#   storage_quota_spoofing: false
+#   permissions_hardening: true
+#   credentials_blocking: true
+#   privacy_headers: true
+#   tracking_domain_blocking: true
+#   canvas_fingerprint_protection: false
+#   webgl_fingerprint_protection: false
+#   audio_fingerprint_protection: false
+#   font_enumeration_restriction: false

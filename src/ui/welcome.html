@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @font-face {
+            font-family: 'gohu';
+            src: url('data:application/font-woff2;charset=utf-8;base64,d09GMgABAAAAABEYAA4AAAAAJKAAABDEAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGhYbHhyBbAZgAIEICghWCYM8EQwKgdRgg7hzC4NAAAE2AiQDhx4EIAWDAAeFPQyBZxu8IqOQHkO2HySh4MbHmL/M3v+TQLAbdqUBAhsOACi1kcDKiixZqgMYVqyqKju0e3//b7Pb1SIRqC5SN6ErCDmT0DSReCdh0kgkn2Dz/P//n3m/+cXsO7PvzO07c+/M3DszJJKS5kkk0kmkk0gkkdwk0kmke+/eJvfuPQe9e5vce/emL7lJokTy3ntPIin33ntP7r33nvz/f5tdYKuqKqmqomor87+ft3e21N7ZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9s2afbNm36zZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9s2afbNm36zZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9s2afbNm36zZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9v0HAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') format('woff2');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        body {
+            font-family: 'gohu', monospace;
+            background: #000000;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-size: 11px;
+        }
+
+        .welcome-container {
+            text-align: center;
+            max-width: 400px;
+        }
+
+        .logo {
+            margin-bottom: 24px;
+        }
+
+        .logo svg {
+            width: 64px;
+            height: 64px;
+        }
+
+        h1 {
+            font-size: 16px;
+            margin-bottom: 8px;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+
+        .tagline {
+            color: #666666;
+            margin-bottom: 32px;
+            font-size: 11px;
+        }
+
+        .shortcuts {
+            border: 1px solid #ffffff;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .shortcuts-title {
+            font-weight: bold;
+            margin-bottom: 12px;
+            font-size: 11px;
+        }
+
+        .shortcut {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 10px;
+        }
+
+        .shortcut:last-child {
+            margin-bottom: 0;
+        }
+
+        .shortcut-desc {
+            color: #cccccc;
+        }
+
+        .shortcut-keys {
+            display: flex;
+            gap: 4px;
+        }
+
+        .key {
+            border: 1px solid #ffffff;
+            padding: 2px 6px;
+            font-size: 9px;
+            min-width: 20px;
+            text-align: center;
+            background: #1a1a1a;
+        }
+
+        .footer {
+            color: #666666;
+            font-size: 9px;
+        }
+    </style>
+</head>
+<body>
+    <div class="welcome-container">
+        <div class="logo">
+            <svg width="64" height="64" viewBox="0 0 64 64" fill="none" shape-rendering="crispEdges">
+                <rect x="8" y="12" width="12" height="4" fill="#ffffff"/>
+                <rect x="8" y="16" width="4" height="32" fill="#ffffff"/>
+                <rect x="8" y="48" width="12" height="4" fill="#ffffff"/>
+
+                <rect x="28" y="12" width="4" height="40" fill="#ffffff"/>
+                <rect x="36" y="12" width="4" height="40" fill="#ffffff"/>
+                <rect x="44" y="12" width="4" height="40" fill="#ffffff"/>
+                <rect x="52" y="12" width="4" height="40" fill="#ffffff"/>
+
+                <rect x="28" y="12" width="28" height="4" fill="#ffffff"/>
+            </svg>
+        </div>
+
+        <h1>CALM</h1>
+        <div class="tagline">privacy-first browser</div>
+
+        <div class="shortcuts">
+            <div class="shortcuts-title">keyboard shortcuts</div>
+            <div class="shortcut">
+                <span class="shortcut-desc">new tab</span>
+                <div class="shortcut-keys">
+                    <span class="key">cmd</span>
+                    <span class="key">t</span>
+                </div>
+            </div>
+            <div class="shortcut">
+                <span class="shortcut-desc">close tab</span>
+                <div class="shortcut-keys">
+                    <span class="key">cmd</span>
+                    <span class="key">w</span>
+                </div>
+            </div>
+            <div class="shortcut">
+                <span class="shortcut-desc">reload</span>
+                <div class="shortcut-keys">
+                    <span class="key">cmd</span>
+                    <span class="key">r</span>
+                </div>
+            </div>
+            <div class="shortcut">
+                <span class="shortcut-desc">focus url bar</span>
+                <div class="shortcut-keys">
+                    <span class="key">cmd</span>
+                    <span class="key">l</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            start browsing by entering a url above
+        </div>
+    </div>
+</body>
+</html>
