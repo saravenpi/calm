@@ -1,6 +1,7 @@
 use super::tab::Tab;
 use crate::privacy;
 use crate::url_cleaner;
+use crate::vim_scroll;
 use crate::config::Config;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -228,7 +229,10 @@ impl TabManager {
                     }
                 }
             })
-            .with_initialization_script(&privacy::get_combined_privacy_script_with_config(&self.config.privacy))
+            .with_initialization_script(&format!("{}\n{}",
+                privacy::get_combined_privacy_script_with_config(&self.config.privacy),
+                vim_scroll::get_vim_scroll_script()
+            ))
             .with_download_started_handler(move |url, path| {
                 let download_id = {
                     let mut id = download_id_counter.lock().unwrap();

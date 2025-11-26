@@ -3,6 +3,7 @@ mod privacy;
 mod tabs;
 mod ui;
 mod url_cleaner;
+mod vim_scroll;
 
 use std::{cell::RefCell, rc::Rc};
 use tao::{
