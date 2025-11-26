@@ -10,6 +10,7 @@ pub fn get_tab_bar_script() -> &'static str {
 
         window.updateUrlBar = function(url) {
             const urlBar = document.getElementById('url-bar');
+            const reloadBtn = document.getElementById('reload-btn');
             if (urlBar) {
                 if (url === 'about:blank' || url === '') {
                     urlBar.value = '';
@@ -18,6 +19,11 @@ pub fn get_tab_bar_script() -> &'static str {
                     urlBar.value = displayUrl;
                 }
                 window.currentUrl = url;
+            }
+
+            if (reloadBtn) {
+                const isCalmPage = url.startsWith('calm://');
+                reloadBtn.disabled = isCalmPage;
             }
         };
 

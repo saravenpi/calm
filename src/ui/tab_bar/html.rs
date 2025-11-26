@@ -23,7 +23,7 @@ pub fn get_tab_bar_html_structure() -> &'static str {
                 <rect x="2" y="10" width="6" height="2"/>
             </svg>
         </button>
-        <button class="reload-btn" onclick="window.ipc.postMessage(JSON.stringify({action: 'reload_tab'}))" title="Reload (Cmd+R)">
+        <button class="reload-btn" id="reload-btn" onclick="window.ipc.postMessage(JSON.stringify({action: 'reload_tab'}))" title="Reload (Cmd+R)">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" shape-rendering="crispEdges">
                 <rect x="4" y="2" width="6" height="2"/>
                 <rect x="10" y="4" width="2" height="2"/>
