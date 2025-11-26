@@ -4,6 +4,7 @@ pub fn get_tab_bar_script() -> &'static str {
         window.currentUrl = '';
         window.tabAudioState = {};
         window.focusedTabIndex = -1;
+        window.lastGKeyTime = 0;
 
         window.handleNewTab = function() {
             window.ipc.postMessage(JSON.stringify({action: 'new_tab'}));
@@ -249,6 +250,18 @@ pub fn get_tab_bar_script() -> &'static str {
             }
         };
 
+        window.jumpToFirstTab = function() {
+            if (window.tabs.length > 0) {
+                window.updateFocusedTab(0);
+            }
+        };
+
+        window.jumpToLastTab = function() {
+            if (window.tabs.length > 0) {
+                window.updateFocusedTab(window.tabs.length - 1);
+            }
+        };
+
         let lastShortcutEvent = { key: '', time: 0 };
         const KEY_DEBOUNCE_MS = 300;
 
@@ -282,6 +295,20 @@ pub fn get_tab_bar_script() -> &'static str {
                     if (urlBar) {
                         urlBar.focus();
                         urlBar.select();
+                    }
+                    return;
+                } else if (e.key === 'G' && e.shiftKey) {
+                    e.preventDefault();
+                    window.jumpToLastTab();
+                    return;
+                } else if (e.key === 'g') {
+                    const now = Date.now();
+                    if (now - window.lastGKeyTime < 500) {
+                        e.preventDefault();
+                        window.jumpToFirstTab();
+                        window.lastGKeyTime = 0;
+                    } else {
+                        window.lastGKeyTime = now;
                     }
                     return;
                 }
