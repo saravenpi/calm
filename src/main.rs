@@ -253,7 +253,7 @@ fn main() -> wry::Result<()> {
                                     let cfg = config.borrow();
                                     let settings_obj = serde_json::json!({
                                         "defaultUrl": cfg.default_url,
-                                        "searchEngine": cfg.search_engine.split("?q=").next().unwrap_or("https://duckduckgo.com/"),
+                                        "searchEngine": cfg.search_engine,
                                         "vimMode": cfg.ui.vim_mode,
                                         "blockTrackers": cfg.privacy.tracking_domain_blocking,
                                         "blockFingerprinting": cfg.privacy.canvas_fingerprint_protection,
@@ -271,7 +271,7 @@ fn main() -> wry::Result<()> {
                                         cfg.default_url = default_url.to_string();
                                     }
                                     if let Some(search_engine) = settings.get("searchEngine").and_then(|v| v.as_str()) {
-                                        cfg.search_engine = format!("{}{{}} ", search_engine);
+                                        cfg.search_engine = search_engine.to_string();
                                     }
                                     if let Some(vim_mode) = settings.get("vimMode").and_then(|v| v.as_bool()) {
                                         cfg.ui.vim_mode = vim_mode;

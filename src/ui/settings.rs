@@ -354,10 +354,10 @@ pub fn get_settings_html() -> String {
                 </div>
                 <div class="setting-control">
                     <select id="search-engine">
-                        <option value="https://duckduckgo.com/?q=">DuckDuckGo</option>
-                        <option value="https://www.google.com/search?q=">Google</option>
-                        <option value="https://www.bing.com/search?q=">Bing</option>
-                        <option value="https://search.brave.com/search?q=">Brave</option>
+                        <option value="https://duckduckgo.com/?q={{}}">DuckDuckGo</option>
+                        <option value="https://www.google.com/search?q={{}}">Google</option>
+                        <option value="https://www.bing.com/search?q={{}}">Bing</option>
+                        <option value="https://search.brave.com/search?q={{}}">Brave</option>
                     </select>
                 </div>
             </div>
