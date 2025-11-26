@@ -87,16 +87,30 @@ pub fn get_tab_bar_styles() -> &'static str {
         }
 
         .tab.closing {
-            animation: tabClose 0.2s linear forwards;
+            animation: tabClose 0.25s ease-out forwards;
         }
 
         @keyframes tabClose {
+            0% {
+                opacity: 1;
+                max-height: 32px;
+                padding: 8px;
+                margin-bottom: 2px;
+                border-width: 1px;
+            }
+            50% {
+                opacity: 0;
+                max-height: 32px;
+                padding: 8px 0;
+                margin-bottom: 2px;
+                border-width: 1px;
+            }
             100% {
                 opacity: 0;
-                max-width: 0;
+                max-height: 0;
                 padding: 0;
-                margin: 0;
-                border: 0;
+                margin-bottom: 0;
+                border-width: 0;
             }
         }
 
