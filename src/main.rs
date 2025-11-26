@@ -126,6 +126,8 @@ fn main() -> wry::Result<()> {
     let sidebar_visible = Rc::new(RefCell::new(false));
     let should_quit = Rc::new(RefCell::new(false));
     let last_g_key_time = Rc::new(RefCell::new(None::<Instant>));
+    let last_new_tab_time = Rc::new(RefCell::new(None::<Instant>));
+    let last_close_tab_time = Rc::new(RefCell::new(None::<Instant>));
     let modifiers_state = Rc::new(RefCell::new(ModifiersState::default()));
 
     let hotkey_manager = GlobalHotKeyManager::new().expect("Failed to create hotkey manager");
@@ -137,6 +139,7 @@ fn main() -> wry::Result<()> {
     let hotkey_toggle_downloads = HotKey::new(Some(cmd_or_ctrl), Code::KeyJ);
     let hotkey_focus_sidebar = HotKey::new(Some(cmd_or_ctrl), Code::KeyE);
     let hotkey_find = HotKey::new(Some(cmd_or_ctrl), Code::KeyF);
+    let hotkey_new_tab = HotKey::new(Some(cmd_or_ctrl), Code::KeyT);
     let hotkey_close_tab = HotKey::new(Some(cmd_or_ctrl), Code::KeyW);
     let hotkey_quit = HotKey::new(Some(cmd_or_ctrl), Code::KeyQ);
 
@@ -145,6 +148,7 @@ fn main() -> wry::Result<()> {
     hotkey_manager.register(hotkey_toggle_downloads).expect("Failed to register Cmd+J");
     hotkey_manager.register(hotkey_focus_sidebar).expect("Failed to register Cmd+E");
     hotkey_manager.register(hotkey_find).expect("Failed to register Cmd+F");
+    hotkey_manager.register(hotkey_new_tab).expect("Failed to register Cmd+T");
     hotkey_manager.register(hotkey_close_tab).expect("Failed to register Cmd+W");
     hotkey_manager.register(hotkey_quit).expect("Failed to register Cmd+Q");
 
@@ -177,8 +181,11 @@ fn main() -> wry::Result<()> {
                             }
                             Some("close_tab") => {
                                 if let Some(tab_id) = data["tabId"].as_u64() {
+                                    debug_log!("=== IPC close_tab received for tab ID: {} ===", tab_id);
                                     let tab_count = tab_manager.borrow().get_tab_count();
+                                    debug_log!("Current tab count: {}", tab_count);
                                     if tab_count == 1 {
+                                        debug_log!("Last tab - quitting via IPC");
                                         *should_quit.borrow_mut() = true;
                                     } else {
                                         tab_manager.borrow_mut().close_tab(tab_id as usize);
@@ -186,6 +193,7 @@ fn main() -> wry::Result<()> {
                                             let script = format!("window.removeTab({});", tab_id);
                                             let _ = webview.evaluate_script(&script);
                                         }
+                                        debug_log!("Tab {} closed via IPC", tab_id);
                                     }
                                 }
                             }
@@ -193,9 +201,14 @@ fn main() -> wry::Result<()> {
                                 *should_quit.borrow_mut() = true;
                             }
                             Some("new_tab") => {
+                                debug_log!("=== IPC new_tab action received ===");
+                                let tab_count_before = tab_manager.borrow().get_tab_count();
+                                debug_log!("IPC Tab count before: {}", tab_count_before);
+
                                 let welcome_html = ui::get_welcome_html();
                                 let tab_result = tab_manager.borrow_mut().create_tab_with_html(&window, &welcome_html);
                                 if let Ok(tab_id) = tab_result {
+                                    debug_log!("IPC Created tab with ID: {}", tab_id);
                                     tab_manager.borrow_mut().switch_to_tab(tab_id);
                                     if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
                                         let script = format!(
@@ -208,6 +221,8 @@ fn main() -> wry::Result<()> {
                                         let focus_script = "document.getElementById('url-bar')?.focus();";
                                         let _ = webview.evaluate_script(focus_script);
                                     }
+                                    let tab_count_after = tab_manager.borrow().get_tab_count();
+                                    debug_log!("IPC Tab count after: {}", tab_count_after);
                                 }
                             }
                             Some("open_url_new_tab") => {
@@ -433,11 +448,20 @@ fn main() -> wry::Result<()> {
         if let Ok(global_hotkey_event) = GlobalHotKeyEvent::receiver().try_recv() {
             let hotkey_id = global_hotkey_event.id();
 
+            debug_log!("GlobalHotKey event received: id={}", hotkey_id);
+
+            let mut drained_count = 0;
             loop {
                 match GlobalHotKeyEvent::receiver().try_recv() {
-                    Ok(next_event) if next_event.id() == hotkey_id => continue,
+                    Ok(next_event) if next_event.id() == hotkey_id => {
+                        drained_count += 1;
+                        continue;
+                    },
                     _ => break,
                 }
+            }
+            if drained_count > 0 {
+                debug_log!("Drained {} duplicate events for hotkey {}", drained_count, hotkey_id);
             }
 
             if hotkey_id == hotkey_quit.id() {
@@ -479,17 +503,99 @@ fn main() -> wry::Result<()> {
                 if let Some(active_webview) = tab_manager.borrow().get_active_tab_webview() {
                     let _ = active_webview.evaluate_script("window.calmStartSearch();");
                 }
+            } else if hotkey_id == hotkey_new_tab.id() {
+                let now = Instant::now();
+                let should_execute = {
+                    let mut last_time = last_new_tab_time.borrow_mut();
+                    if let Some(last) = *last_time {
+                        let elapsed = now.duration_since(last).as_millis();
+                        if elapsed < 250 {
+                            debug_log!("Cmd+T DEBOUNCED - only {}ms since last, IGNORING", elapsed);
+                            false
+                        } else {
+                            *last_time = Some(now);
+                            true
+                        }
+                    } else {
+                        *last_time = Some(now);
+                        true
+                    }
+                };
+
+                if !should_execute {
+                } else {
+                    debug_log!("=== Cmd+T GlobalHotKey FIRED - creating new tab ===");
+                    let tab_count_before = tab_manager.borrow().get_tab_count();
+                    debug_log!("Tab count before: {}", tab_count_before);
+
+                    let welcome_html = ui::get_welcome_html();
+                    let tab_result = tab_manager.borrow_mut().create_tab_with_html(&window, &welcome_html);
+                    if let Ok(tab_id) = tab_result {
+                        debug_log!("Created tab with ID: {}", tab_id);
+                        tab_manager.borrow_mut().switch_to_tab(tab_id);
+                        if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
+                            let script = format!(
+                                "window.addTab({}, 'calm://welcome'); window.setActiveTab({}); window.updateUrlBar('');",
+                                tab_id,
+                                tab_id
+                            );
+                            let _ = webview.evaluate_script(&script);
+                            let focus_script = "document.getElementById('url-bar')?.focus();";
+                            let _ = webview.evaluate_script(focus_script);
+                        }
+                        let tab_count_after = tab_manager.borrow().get_tab_count();
+                        debug_log!("Tab count after: {}", tab_count_after);
+                    } else {
+                        debug_log!("ERROR: Failed to create tab");
+                    }
+                }
             } else if hotkey_id == hotkey_close_tab.id() {
-                let active_tab_id = tab_manager.borrow().get_active_tab_id();
-                if let Some(tab_id) = active_tab_id {
+                let now = Instant::now();
+                let should_execute = {
+                    let mut last_time = last_close_tab_time.borrow_mut();
+                    if let Some(last) = *last_time {
+                        let elapsed = now.duration_since(last).as_millis();
+                        if elapsed < 250 {
+                            debug_log!("=== Cmd+W DEBOUNCED - only {}ms since last, IGNORING ===", elapsed);
+                            false
+                        } else {
+                            debug_log!("=== Cmd+W allowed - {}ms since last ===", elapsed);
+                            *last_time = Some(now);
+                            true
+                        }
+                    } else {
+                        debug_log!("=== Cmd+W first press - executing ===");
+                        *last_time = Some(now);
+                        true
+                    }
+                };
+
+                if should_execute {
+                    debug_log!("=== Cmd+W GlobalHotKey EXECUTING - closing ONE tab ===");
+
                     let tab_count = tab_manager.borrow().get_tab_count();
-                    if tab_count == 1 {
+                    let active_tab_id = tab_manager.borrow().get_active_tab_id();
+
+                    debug_log!("Tab count before close: {}", tab_count);
+
+                    if tab_count <= 1 {
+                        debug_log!("Last tab - quitting application");
                         *should_quit.borrow_mut() = true;
                     } else {
-                        tab_manager.borrow_mut().close_tab(tab_id);
-                        if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
-                            let script = format!("window.removeTab({});", tab_id);
-                            let _ = webview.evaluate_script(&script);
+                        if let Some(active_tab_id) = active_tab_id {
+                            debug_log!("Closing ONLY tab ID: {}", active_tab_id);
+
+                            tab_manager.borrow_mut().close_tab(active_tab_id);
+
+                            if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
+                                let script = format!("window.removeTab({});", active_tab_id);
+                                let _ = webview.evaluate_script(&script);
+                            }
+
+                            let remaining = tab_manager.borrow().get_tab_count();
+                            debug_log!("Tab {} closed, remaining tabs: {}", active_tab_id, remaining);
+                        } else {
+                            debug_log!("ERROR: No active tab found");
                         }
                     }
                 }
@@ -561,6 +667,9 @@ fn main() -> wry::Result<()> {
                         modifiers.alt_key(),
                         modifiers.shift_key()
                     );
+
+                    // Cmd+T and Cmd+W are handled by GlobalHotKey (not KeyboardInput)
+                    // because KeyboardInput doesn't fire when webview has focus
 
                     if key_event.logical_key == tao::keyboard::Key::Enter {
                         debug_log!("Enter key - focusing selected tab");

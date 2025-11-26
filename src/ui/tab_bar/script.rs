@@ -295,9 +295,6 @@ pub fn get_tab_bar_script() -> &'static str {
             }
         };
 
-        let lastShortcutEvent = { key: '', time: 0 };
-        const KEY_DEBOUNCE_MS = 300;
-
         document.addEventListener('keydown', (e) => {
             if (!window.vimMode) {
                 return;
@@ -353,44 +350,6 @@ pub fn get_tab_bar_script() -> &'static str {
         }, true);
 
         document.addEventListener('keydown', (e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 't') {
-                const now = Date.now();
-                const eventKey = 'meta+t';
-
-                if (lastShortcutEvent.key === eventKey && (now - lastShortcutEvent.time) < KEY_DEBOUNCE_MS) {
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
-                    return false;
-                }
-
-                lastShortcutEvent = { key: eventKey, time: now };
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                window.ipc.postMessage(JSON.stringify({action: 'new_tab'}));
-                return false;
-            }
-
-            if ((e.metaKey || e.ctrlKey) && e.key === 'w') {
-                const now = Date.now();
-                const eventKey = 'meta+w';
-
-                if (lastShortcutEvent.key === eventKey && (now - lastShortcutEvent.time) < KEY_DEBOUNCE_MS) {
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
-                    return false;
-                }
-
-                lastShortcutEvent = { key: eventKey, time: now };
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                const activeTab = document.querySelector('.tab.active');
-                if (activeTab) {
-                    const tabId = parseInt(activeTab.dataset.tabId);
-                    window.ipc.postMessage(JSON.stringify({action: 'close_tab', tabId: tabId}));
-                }
-                return false;
-            }
-
             if (e.key === 'Escape') {
                 const urlBar = document.getElementById('url-bar');
                 if (urlBar && document.activeElement === urlBar) {

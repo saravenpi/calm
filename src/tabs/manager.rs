@@ -469,7 +469,22 @@ console.log('[INIT] Console override installed');
             if self.active_tab_id == Some(tab_id) {
                 self.active_tab_id = None;
 
-                if let Some((&next_id, _)) = self.tabs.iter().next() {
+                let mut tab_ids: Vec<usize> = self.tabs.keys().copied().collect();
+                tab_ids.sort();
+
+                let next_tab_id = if let Some(pos) = tab_ids.iter().position(|&id| id > tab_id) {
+                    if pos > 0 {
+                        Some(tab_ids[pos - 1])
+                    } else {
+                        Some(tab_ids[pos])
+                    }
+                } else if !tab_ids.is_empty() {
+                    Some(tab_ids[tab_ids.len() - 1])
+                } else {
+                    None
+                };
+
+                if let Some(next_id) = next_tab_id {
                     self.switch_to_tab(next_id);
                 }
             }
