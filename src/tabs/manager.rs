@@ -229,10 +229,14 @@ impl TabManager {
                     }
                 }
             })
-            .with_initialization_script(&format!("{}\n{}",
-                privacy::get_combined_privacy_script_with_config(&self.config.privacy),
-                vim_scroll::get_vim_scroll_script()
-            ))
+            .with_initialization_script(&{
+                let privacy_script = privacy::get_combined_privacy_script_with_config(&self.config.privacy);
+                if self.config.ui.vim_mode {
+                    format!("{}\n{}", privacy_script, vim_scroll::get_vim_scroll_script())
+                } else {
+                    privacy_script.to_string()
+                }
+            })
             .with_download_started_handler(move |url, path| {
                 let download_id = {
                     let mut id = download_id_counter.lock().unwrap();

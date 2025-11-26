@@ -138,7 +138,7 @@ fn main() -> wry::Result<()> {
     let window_size = window.inner_size();
     let tab_bar_webview = Rc::new(
         wry::WebViewBuilder::new()
-            .with_html(&ui::get_complete_tab_bar_html())
+            .with_html(&ui::get_complete_tab_bar_html(config.borrow().ui.vim_mode))
             .with_transparent(true)
             .with_bounds(wry::Rect {
                 position: tao::dpi::LogicalPosition::new(0, 0).into(),
@@ -254,6 +254,7 @@ fn main() -> wry::Result<()> {
                                     let settings_obj = serde_json::json!({
                                         "defaultUrl": cfg.default_url,
                                         "searchEngine": cfg.search_engine.split("?q=").next().unwrap_or("https://duckduckgo.com/"),
+                                        "vimMode": cfg.ui.vim_mode,
                                         "blockTrackers": cfg.privacy.tracking_domain_blocking,
                                         "blockFingerprinting": cfg.privacy.canvas_fingerprint_protection,
                                         "blockCookies": true,
@@ -271,6 +272,9 @@ fn main() -> wry::Result<()> {
                                     }
                                     if let Some(search_engine) = settings.get("searchEngine").and_then(|v| v.as_str()) {
                                         cfg.search_engine = format!("{}{{}} ", search_engine);
+                                    }
+                                    if let Some(vim_mode) = settings.get("vimMode").and_then(|v| v.as_bool()) {
+                                        cfg.ui.vim_mode = vim_mode;
                                     }
                                     if let Some(block_trackers) = settings.get("blockTrackers").and_then(|v| v.as_bool()) {
                                         cfg.privacy.tracking_domain_blocking = block_trackers;

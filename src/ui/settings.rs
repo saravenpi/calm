@@ -271,6 +271,7 @@ pub fn get_settings_html() -> String {
                 const settings = {
                     defaultUrl: document.getElementById('default-url').value,
                     searchEngine: document.getElementById('search-engine').value,
+                    vimMode: document.getElementById('vim-mode').checked,
                     blockTrackers: document.getElementById('block-trackers').checked,
                     blockFingerprinting: document.getElementById('block-fingerprinting').checked,
                     blockCookies: document.getElementById('block-cookies').checked,
@@ -303,6 +304,9 @@ pub fn get_settings_html() -> String {
                 }
                 if (settings.searchEngine) {
                     document.getElementById('search-engine').value = settings.searchEngine;
+                }
+                if (settings.vimMode !== undefined) {
+                    document.getElementById('vim-mode').checked = settings.vimMode;
                 }
                 if (settings.blockTrackers !== undefined) {
                     document.getElementById('block-trackers').checked = settings.blockTrackers;
@@ -355,6 +359,19 @@ pub fn get_settings_html() -> String {
                         <option value="https://www.bing.com/search?q=">Bing</option>
                         <option value="https://search.brave.com/search?q=">Brave</option>
                     </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="setting-section">
+            <h2>Appearance</h2>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">Vim Mode</div>
+                    <div class="setting-description">Enable vim-style keyboard navigation (j/k/h/l/gg/G)</div>
+                </div>
+                <div class="setting-control">
+                    <input type="checkbox" id="vim-mode" checked>
                 </div>
             </div>
         </div>

@@ -49,11 +49,16 @@ fn default_true() -> bool {
 
 /// UI-related configuration settings for the browser interface.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UiSettings {}
+pub struct UiSettings {
+    #[serde(default = "default_true")]
+    pub vim_mode: bool,
+}
 
 impl Default for UiSettings {
     fn default() -> Self {
-        UiSettings {}
+        UiSettings {
+            vim_mode: true,
+        }
     }
 }
 

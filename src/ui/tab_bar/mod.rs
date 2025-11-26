@@ -6,7 +6,7 @@ pub use html::get_tab_bar_html_structure;
 pub use styles::get_tab_bar_styles;
 pub use script::get_tab_bar_script;
 
-pub fn get_complete_tab_bar_html() -> String {
+pub fn get_complete_tab_bar_html(vim_mode: bool) -> String {
     format!(
         r#"<!DOCTYPE html>
 <html>
@@ -21,12 +21,14 @@ pub fn get_complete_tab_bar_html() -> String {
 <body>
     {}
     <script>
+        window.vimMode = {};
         {}
     </script>
 </body>
 </html>"#,
         get_tab_bar_styles(),
         get_tab_bar_html_structure(),
+        vim_mode,
         get_tab_bar_script()
     )
 }

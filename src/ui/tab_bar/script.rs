@@ -266,6 +266,10 @@ pub fn get_tab_bar_script() -> &'static str {
         const KEY_DEBOUNCE_MS = 300;
 
         document.addEventListener('keydown', (e) => {
+            if (!window.vimMode) {
+                return;
+            }
+
             const urlBar = document.getElementById('url-bar');
             const isUrlBarFocused = document.activeElement === urlBar;
 
