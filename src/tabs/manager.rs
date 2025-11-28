@@ -1,4 +1,5 @@
 use super::tab::Tab;
+use super::split_view::{SplitViewManager, SplitOrientation, SplitPane};
 use crate::privacy;
 use crate::url_cleaner;
 use crate::config::Config;
@@ -23,14 +24,19 @@ pub struct TabManager {
     tab_sidebar_width: u32,
     tab_bar_webview: Option<std::rc::Rc<WebView>>,
     download_overlay: Option<std::rc::Rc<WebView>>,
-    config: Config,
+    config: std::rc::Rc<std::cell::RefCell<Config>>,
+    split_view: SplitViewManager,
+    current_urls: Arc<Mutex<HashMap<usize, String>>>,
+    active_tab_id_shared: Arc<Mutex<Option<usize>>>,
 }
 
+/// Returns the path to the user's Downloads directory.
 fn get_downloads_dir() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
     PathBuf::from(home).join("Downloads")
 }
 
+/// Attempts to extract filename from HTTP Content-Disposition header.
 fn get_filename_from_headers(url: &str) -> Option<String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
@@ -61,6 +67,7 @@ fn get_filename_from_headers(url: &str) -> Option<String> {
     None
 }
 
+/// Extracts and sanitizes a filename from a URL, removing invalid characters.
 fn sanitize_filename(url: &str) -> String {
     let path_part = url.split('?').next().unwrap_or(url);
     let path_part = path_part.split('#').next().unwrap_or(path_part);
@@ -92,6 +99,7 @@ fn sanitize_filename(url: &str) -> String {
     filename
 }
 
+/// Adds file extension to a file by detecting its type from content if extension is missing.
 fn add_extension_if_needed(path: &PathBuf) -> PathBuf {
     if path.extension().is_some() {
         return path.clone();
@@ -115,7 +123,7 @@ fn add_extension_if_needed(path: &PathBuf) -> PathBuf {
 
 impl TabManager {
     /// Creates a new TabManager instance with the specified tab sidebar width and configuration.
-    pub fn new(tab_sidebar_width: u32, config: Config) -> Self {
+    pub fn new(tab_sidebar_width: u32, config: std::rc::Rc<std::cell::RefCell<Config>>) -> Self {
         Self {
             tabs: HashMap::new(),
             active_tab_id: None,
@@ -125,6 +133,9 @@ impl TabManager {
             tab_bar_webview: None,
             download_overlay: None,
             config,
+            split_view: SplitViewManager::new(),
+            current_urls: Arc::new(Mutex::new(HashMap::new())),
+            active_tab_id_shared: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -150,6 +161,7 @@ impl TabManager {
         self.create_tab_internal(window, "about:blank", Some(html))
     }
 
+    /// Internal method to create a tab with URL or HTML content.
     fn create_tab_internal(&mut self, window: &Window, url: &str, html: Option<&str>) -> Result<usize, wry::Error> {
         debug_log!("create_tab_internal called - url: {}, has_html: {}", url, html.is_some());
 
@@ -170,7 +182,8 @@ impl TabManager {
             size: LogicalSize::new(content_width, window_size.height).into(),
         };
 
-        let cleaned_url = url_cleaner::clean_url(url).unwrap_or_else(|_| url.to_string());
+        let redirected_url = url_cleaner::redirect_youtube_to_invidious(url, &self.config.borrow());
+        let cleaned_url = url_cleaner::clean_url(&redirected_url).unwrap_or_else(|_| redirected_url.to_string());
 
         let download_id_counter = Arc::clone(&self.next_download_id);
         let current_download_id = Arc::new(Mutex::new(0usize));
@@ -182,6 +195,10 @@ impl TabManager {
         let download_overlay_started = self.download_overlay.clone();
         let download_overlay_completed = self.download_overlay.clone();
         let tab_bar_for_ipc = self.tab_bar_webview.clone();
+        let current_urls_for_ipc = Arc::clone(&self.current_urls);
+        let tab_id_for_ipc = tab_id;
+        let active_tab_id_for_ipc = Arc::clone(&self.active_tab_id_shared);
+        let config_for_ipc = std::rc::Rc::clone(&self.config);
 
         let mut builder = WebViewBuilder::new();
 
@@ -237,8 +254,8 @@ impl TabManager {
             .with_initialization_script(&{
                 debug_log!("Building initialization script for tab {}", tab_id);
 
-                let privacy_script = privacy::get_combined_privacy_script_with_config(&self.config.privacy);
-                let vimium_script = if self.config.ui.vim_mode {
+                let privacy_script = privacy::get_combined_privacy_script_with_config(&self.config.borrow().privacy);
+                let vimium_script = if self.config.borrow().ui.vim_mode {
                     debug_log!("Including vimium hints script (vim_mode enabled)");
                     vimium_hints::get_vimium_hints_script()
                 } else {
@@ -292,20 +309,146 @@ console.log('[INIT] window exists?', typeof window !== 'undefined');
 console.log('[INIT] Console override installed');
                 "#;
 
-                // Wrap privacy script in try-catch to prevent it from blocking vimium script
+                let invidious_instance = self.config.borrow().invidious_instance.clone();
+                let redirect_enabled = self.config.borrow().redirect_youtube_to_invidious;
+
+                let link_interception = if redirect_enabled {
+                    format!(r#"
+(function() {{
+    const INVIDIOUS_INSTANCE = '{}';
+
+    function redirectYouTubeUrl(url) {{
+        try {{
+            const urlObj = new URL(url);
+            const host = urlObj.host;
+
+            if (host === 'youtube.com' || host === 'www.youtube.com' || host === 'm.youtube.com' || host === 'youtu.be') {{
+                const path = urlObj.pathname;
+                const query = urlObj.search;
+
+                let newPath = path;
+                let newQuery = query;
+
+                if (host === 'youtu.be') {{
+                    const videoId = path.substring(1).split('/')[0];
+                    if (videoId) {{
+                        newPath = '/watch';
+                        newQuery = query ? '?v=' + videoId + '&' + query.substring(1) : '?v=' + videoId;
+                    }}
+                }} else if (path.startsWith('/shorts/')) {{
+                    const videoId = path.substring(8).split('/')[0];
+                    if (videoId) {{
+                        newPath = '/watch';
+                        newQuery = query ? '?v=' + videoId + '&' + query.substring(1) : '?v=' + videoId;
+                    }}
+                }} else if (path.startsWith('/embed/')) {{
+                    const videoId = path.substring(7).split('/')[0];
+                    if (videoId) {{
+                        newPath = '/watch';
+                        newQuery = query ? '?v=' + videoId + '&' + query.substring(1) : '?v=' + videoId;
+                    }}
+                }} else if (path.startsWith('/v/')) {{
+                    const videoId = path.substring(3).split('/')[0];
+                    if (videoId) {{
+                        newPath = '/watch';
+                        newQuery = query ? '?v=' + videoId + '&' + query.substring(1) : '?v=' + videoId;
+                    }}
+                }} else if (path.startsWith('/live/')) {{
+                    const videoId = path.substring(6).split('/')[0];
+                    if (videoId) {{
+                        newPath = '/watch';
+                        newQuery = query ? '?v=' + videoId + '&' + query.substring(1) : '?v=' + videoId;
+                    }}
+                }}
+
+                return 'https://' + INVIDIOUS_INSTANCE + newPath + newQuery;
+            }}
+        }} catch (e) {{
+            console.error('[REDIRECT] Error redirecting URL:', e);
+        }}
+        return null;
+    }}
+
+    function interceptNavigation() {{
+        document.addEventListener('click', function(e) {{
+            let target = e.target;
+            while (target && target.tagName !== 'A') {{
+                target = target.parentElement;
+            }}
+
+            if (target && target.tagName === 'A' && target.href) {{
+                const redirected = redirectYouTubeUrl(target.href);
+                if (redirected) {{
+                    e.preventDefault();
+                    console.log('[REDIRECT] YouTube -> Invidious:', target.href, '->', redirected);
+                    window.location.href = redirected;
+                    return false;
+                }}
+            }}
+        }}, true);
+    }}
+
+    if (document.readyState === 'loading') {{
+        document.addEventListener('DOMContentLoaded', interceptNavigation);
+    }} else {{
+        interceptNavigation();
+    }}
+
+    console.log('[INIT] YouTube->Invidious link interception installed');
+}})();
+                "#, invidious_instance)
+                } else {
+                    String::new()
+                };
+
                 let safe_privacy_script = format!(
                     "try {{\n{}\n}} catch(e) {{ console.error('[PRIVACY] Error:', e); }}",
                     privacy_script
                 );
 
-                let combined_script = format!("{}\n{}\n{}", console_override, safe_privacy_script, vimium_script);
+                let cfg = self.config.borrow();
+                let settings_init_script = format!(r#"
+(function() {{
+    function initSettings() {{
+        const defaultUrlInput = document.getElementById('default-url');
+        const searchEngineInput = document.getElementById('search-engine');
+        const vimModeCheckbox = document.getElementById('vim-mode');
+        const blockTrackersCheckbox = document.getElementById('block-trackers');
+        const blockFingerprintingCheckbox = document.getElementById('block-fingerprinting');
+
+        if (defaultUrlInput && searchEngineInput && vimModeCheckbox) {{
+            console.log('[SETTINGS-INIT] Settings page detected, populating values');
+            defaultUrlInput.value = {};
+            searchEngineInput.value = {};
+            vimModeCheckbox.checked = {};
+            blockTrackersCheckbox.checked = {};
+            blockFingerprintingCheckbox.checked = {};
+            console.log('[SETTINGS-INIT] Settings populated successfully');
+        }}
+    }}
+
+    if (document.readyState === 'loading') {{
+        document.addEventListener('DOMContentLoaded', initSettings);
+    }} else {{
+        initSettings();
+    }}
+}})();
+                "#,
+                    serde_json::to_string(&cfg.default_url).unwrap_or_else(|_| "\"\"".to_string()),
+                    serde_json::to_string(&cfg.search_engine).unwrap_or_else(|_| "\"\"".to_string()),
+                    cfg.ui.vim_mode,
+                    cfg.privacy.tracking_domain_blocking,
+                    cfg.privacy.canvas_fingerprint_protection
+                );
+                drop(cfg);
+
+                let combined_script = format!("{}\n{}\n{}\n{}\n{}", console_override, link_interception, safe_privacy_script, vimium_script, settings_init_script);
                 debug_log!("Initialization script size: {} bytes (console: ~600, privacy: ~{}, vimium: {})",
                     combined_script.len(),
                     safe_privacy_script.len(),
                     vimium_script.len()
                 );
 
-                // Combine all scripts - this runs on every page load
                 combined_script
             })
             .with_download_started_handler(move |url, path| {
@@ -390,6 +533,27 @@ console.log('[INIT] Console override installed');
                                 }
                             }
                         }
+                        Some("update_url") => {
+                            if let Some(url) = data["url"].as_str() {
+                                if let Ok(mut urls) = current_urls_for_ipc.lock() {
+                                    urls.insert(tab_id_for_ipc, url.to_string());
+                                }
+                                let is_active = if let Ok(active_id) = active_tab_id_for_ipc.lock() {
+                                    *active_id == Some(tab_id_for_ipc)
+                                } else {
+                                    false
+                                };
+                                if is_active {
+                                    if let Some(ref webview) = tab_bar_for_ipc {
+                                        let script = format!(
+                                            "window.updateUrlBar({});",
+                                            serde_json::to_string(url).unwrap_or_else(|_| "\"\"".to_string())
+                                        );
+                                        let _ = webview.evaluate_script(&script);
+                                    }
+                                }
+                            }
+                        }
                         Some("update_navigation_state") => {
                             if let Some(ref webview) = tab_bar_for_ipc {
                                 let can_go_back = data["canGoBack"].as_bool().unwrap_or(false);
@@ -412,6 +576,65 @@ console.log('[INIT] Console override installed');
                             };
                             eprintln!("{} {}", prefix, message);
                         }
+                        Some("load_settings") => {
+                            debug_log!("=== load_settings IPC received from tab ===");
+                            if let Some(ref webview) = tab_bar_for_ipc {
+                                let cfg = config_for_ipc.borrow();
+                                let settings_obj = serde_json::json!({
+                                    "defaultUrl": cfg.default_url,
+                                    "searchEngine": cfg.search_engine,
+                                    "vimMode": cfg.ui.vim_mode,
+                                    "blockTrackers": cfg.privacy.tracking_domain_blocking,
+                                    "blockFingerprinting": cfg.privacy.canvas_fingerprint_protection,
+                                    "blockCookies": true,
+                                });
+                                debug_log!("Settings to send from tab: {:?}", settings_obj);
+                                let script = format!(
+                                    "{{ const settingsTab = window.tabs.find(t => t.id === {}); if (settingsTab) {{ window.ipcMessageToTab = {{ tabId: {}, action: 'updateSettings', settings: {} }}; }} }}",
+                                    tab_id_for_ipc, tab_id_for_ipc, settings_obj
+                                );
+                                debug_log!("Sending settings to tab via tab bar");
+                                let _ = webview.evaluate_script(&script);
+                                drop(cfg);
+                            }
+                        }
+                        Some("save_settings") => {
+                            debug_log!("=== save_settings IPC received from tab ===");
+                            if let Some(settings) = data["settings"].as_object() {
+                                debug_log!("Settings received from tab: {:?}", settings);
+                                let mut cfg = config_for_ipc.borrow_mut();
+
+                                if let Some(default_url) = settings.get("defaultUrl").and_then(|v| v.as_str()) {
+                                    debug_log!("Setting default_url to: {}", default_url);
+                                    cfg.default_url = default_url.to_string();
+                                }
+                                if let Some(search_engine) = settings.get("searchEngine").and_then(|v| v.as_str()) {
+                                    debug_log!("Setting search_engine to: {}", search_engine);
+                                    cfg.search_engine = search_engine.to_string();
+                                }
+                                if let Some(vim_mode) = settings.get("vimMode").and_then(|v| v.as_bool()) {
+                                    debug_log!("Setting vim_mode to: {}", vim_mode);
+                                    cfg.ui.vim_mode = vim_mode;
+                                }
+                                if let Some(block_trackers) = settings.get("blockTrackers").and_then(|v| v.as_bool()) {
+                                    debug_log!("Setting block_trackers to: {}", block_trackers);
+                                    cfg.privacy.tracking_domain_blocking = block_trackers;
+                                }
+                                if let Some(block_fp) = settings.get("blockFingerprinting").and_then(|v| v.as_bool()) {
+                                    debug_log!("Setting block_fingerprinting to: {}", block_fp);
+                                    cfg.privacy.canvas_fingerprint_protection = block_fp;
+                                    cfg.privacy.webgl_fingerprint_protection = block_fp;
+                                    cfg.privacy.audio_fingerprint_protection = block_fp;
+                                }
+
+                                match cfg.save() {
+                                    Ok(_) => debug_log!("Settings saved successfully to ~/.calm.yml from tab"),
+                                    Err(e) => debug_log!("ERROR: Failed to save settings from tab: {:?}", e),
+                                }
+                            } else {
+                                debug_log!("ERROR: No settings object in save_settings message from tab");
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -420,8 +643,12 @@ console.log('[INIT] Console override installed');
 
         debug_log!("Webview built successfully for tab {}", tab_id);
 
-        let tab = Tab::new(tab_id, cleaned_url, webview);
+        let tab = Tab::new(tab_id, cleaned_url.clone(), webview);
         self.tabs.insert(tab_id, tab);
+
+        if let Ok(mut urls) = self.current_urls.lock() {
+            urls.insert(tab_id, cleaned_url);
+        }
 
         debug_log!("Tab {} created and inserted into tabs map", tab_id);
 
@@ -448,9 +675,17 @@ console.log('[INIT] Console override installed');
             new_tab.show();
             self.active_tab_id = Some(tab_id);
 
+            if let Ok(mut active_id) = self.active_tab_id_shared.lock() {
+                *active_id = Some(tab_id);
+            }
+
             if let Some(ref webview) = self.tab_bar_webview {
-                let url = new_tab.get_url();
-                let escaped_url = serde_json::to_string(url).unwrap_or_else(|_| "\"\"".to_string());
+                let url = if let Ok(urls) = self.current_urls.lock() {
+                    urls.get(&tab_id).cloned().unwrap_or_else(|| new_tab.get_url().to_string())
+                } else {
+                    new_tab.get_url().to_string()
+                };
+                let escaped_url = serde_json::to_string(&url).unwrap_or_else(|_| "\"\"".to_string());
                 let script = format!(
                     "window.setActiveTab({}); window.updateUrlBar({});",
                     tab_id,
@@ -466,8 +701,16 @@ console.log('[INIT] Console override installed');
         if let Some(tab) = self.tabs.remove(&tab_id) {
             drop(tab);
 
+            if let Ok(mut urls) = self.current_urls.lock() {
+                urls.remove(&tab_id);
+            }
+
             if self.active_tab_id == Some(tab_id) {
                 self.active_tab_id = None;
+
+                if let Ok(mut active_id) = self.active_tab_id_shared.lock() {
+                    *active_id = None;
+                }
 
                 let mut tab_ids: Vec<usize> = self.tabs.keys().copied().collect();
                 tab_ids.sort();
@@ -524,7 +767,8 @@ console.log('[INIT] Console override installed');
     /// Navigates the specified tab to a new URL.
     pub fn navigate_to(&mut self, tab_id: usize, url: &str) {
         if let Some(tab) = self.tabs.get_mut(&tab_id) {
-            let cleaned_url = url_cleaner::clean_url(url).unwrap_or_else(|_| url.to_string());
+            let redirected_url = url_cleaner::redirect_youtube_to_invidious(url, &self.config.borrow());
+            let cleaned_url = url_cleaner::clean_url(&redirected_url).unwrap_or_else(|_| redirected_url.to_string());
             tab.set_url(cleaned_url.clone());
             let escaped_url = serde_json::to_string(&cleaned_url).unwrap_or_else(|_| "\"\"".to_string());
             let script = format!("window.location.href = {};", escaped_url);
@@ -554,31 +798,121 @@ console.log('[INIT] Console override installed');
 
     /// Resizes all tabs to fit the current window size.
     pub fn resize_all_tabs(&mut self, window: &Window) {
-        let window_size = window.inner_size();
-        let content_width = window_size.width.saturating_sub(self.tab_sidebar_width);
+        if self.split_view.state().enabled {
+            self.update_split_view_layout(window, None);
+        } else {
+            let window_size = window.inner_size();
+            let content_width = window_size.width.saturating_sub(self.tab_sidebar_width);
 
-        let bounds = Rect {
-            position: LogicalPosition::new(self.tab_sidebar_width as i32, 0).into(),
-            size: LogicalSize::new(content_width, window_size.height).into(),
-        };
+            let bounds = Rect {
+                position: LogicalPosition::new(self.tab_sidebar_width as i32, 0).into(),
+                size: LogicalSize::new(content_width, window_size.height).into(),
+            };
 
-        for tab in self.tabs.values() {
-            let _ = tab.webview.set_bounds(bounds);
+            for tab in self.tabs.values() {
+                let _ = tab.webview.set_bounds(bounds);
+            }
         }
     }
 
     /// Resizes all tabs to fit the window size minus the download sidebar width.
     pub fn resize_all_tabs_with_sidebar(&mut self, window: &Window, download_sidebar_width: u32) {
-        let window_size = window.inner_size();
-        let content_width = window_size.width.saturating_sub(self.tab_sidebar_width).saturating_sub(download_sidebar_width);
+        if self.split_view.state().enabled {
+            self.update_split_view_layout(window, Some(download_sidebar_width));
+        } else {
+            let window_size = window.inner_size();
+            let content_width = window_size.width.saturating_sub(self.tab_sidebar_width).saturating_sub(download_sidebar_width);
 
-        let bounds = Rect {
-            position: LogicalPosition::new(self.tab_sidebar_width as i32, 0).into(),
-            size: LogicalSize::new(content_width, window_size.height).into(),
-        };
+            let bounds = Rect {
+                position: LogicalPosition::new(self.tab_sidebar_width as i32, 0).into(),
+                size: LogicalSize::new(content_width, window_size.height).into(),
+            };
 
-        for tab in self.tabs.values() {
-            let _ = tab.webview.set_bounds(bounds);
+            for tab in self.tabs.values() {
+                let _ = tab.webview.set_bounds(bounds);
+            }
         }
+    }
+
+    /// Toggles split view mode on/off and returns whether it was enabled.
+    pub fn toggle_split_view(&mut self, window: &Window) -> bool {
+        let tab_ids: Vec<usize> = self.tabs.keys().copied().collect();
+        let toggled = self.split_view.toggle_split_view(self.active_tab_id, &tab_ids);
+
+        if toggled {
+            self.update_split_view_layout(window, None);
+        } else {
+            self.resize_all_tabs(window);
+        }
+
+        toggled
+    }
+
+    /// Returns whether split view mode is currently enabled.
+    pub fn is_split_view_enabled(&self) -> bool {
+        self.split_view.state().enabled
+    }
+
+    /// Toggles the split view orientation between horizontal and vertical.
+    pub fn toggle_split_orientation(&mut self, window: &Window) {
+        if self.split_view.state().enabled {
+            self.split_view.state_mut().toggle_orientation();
+            self.update_split_view_layout(window, None);
+        }
+    }
+
+    /// Swaps the primary and secondary panes in split view.
+    pub fn swap_split_panes(&mut self) {
+        if self.split_view.state().enabled {
+            self.split_view.state_mut().swap_panes();
+        }
+    }
+
+    /// Sets which pane is active in split view mode.
+    pub fn set_split_active_pane(&mut self, pane: SplitPane) {
+        if self.split_view.state().enabled {
+            self.split_view.state_mut().set_active_pane(pane);
+            if let Some(tab_id) = self.split_view.state().get_active_tab_id() {
+                self.active_tab_id = Some(tab_id);
+            }
+        }
+    }
+
+    /// Updates the layout and bounds of split view panes.
+    fn update_split_view_layout(&mut self, window: &Window, download_sidebar_width: Option<u32>) {
+        let state = self.split_view.state();
+
+        if !state.enabled {
+            return;
+        }
+
+        let (primary_bounds, secondary_bounds) = state.calculate_bounds(
+            window,
+            self.tab_sidebar_width,
+            download_sidebar_width,
+        );
+
+        for (tab_id, tab) in &self.tabs {
+            if state.primary_tab_id == Some(*tab_id) {
+                let _ = tab.webview.set_bounds(primary_bounds);
+                tab.show();
+            } else if state.secondary_tab_id == Some(*tab_id) {
+                let _ = tab.webview.set_bounds(secondary_bounds);
+                tab.show();
+            } else {
+                tab.hide();
+            }
+        }
+    }
+
+    /// Returns the current split view state with primary tab, secondary tab, and orientation.
+    pub fn get_split_view_state(&self) -> Option<(usize, usize, SplitOrientation)> {
+        let state = self.split_view.state();
+        if state.enabled {
+            if let (Some(primary), Some(secondary)) = (state.primary_tab_id, state.secondary_tab_id) {
+                return Some((primary, secondary, state.orientation));
+            }
+        }
+        None
     }
 }

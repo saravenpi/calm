@@ -70,10 +70,21 @@ This document tracks features and improvements needed to make Calm a fully usabl
 - [ ] Scan with antivirus integration
 
 ### Multi-Window Support
-- [ ] Multiple browser windows
-- [ ] Move tabs between windows
-- [ ] Window session management
-- [ ] Split view/side-by-side tabs
+- [x] Multiple browser windows (Cmd+N creates new window)
+- [x] Firefox-like behavior (new tabs open in focused window)
+- [x] Per-window tab management
+- [x] Window focus tracking
+- [x] Close window when last tab closes
+- [ ] Move tabs between windows (drag-and-drop - UI implementation pending)
+- [x] Window session management (framework implemented)
+- [x] Split view/side-by-side tabs (Cmd+Shift+S)
+  - [x] Vertical and horizontal split orientations
+  - [x] Toggle split view on/off
+  - [x] Swap panes functionality
+  - [x] IPC commands for split view control
+  - [x] UI controls and visual indicators (buttons in tab bar)
+  - [ ] Drag to resize split ratio (requires custom draggable divider implementation)
+  - [ ] Visual split divider line between panes
 
 ### Media & Content
 - [ ] Media playback controls
@@ -152,6 +163,31 @@ This document tracks features and improvements needed to make Calm a fully usabl
 - [ ] Mouse gestures
 - [ ] Voice commands
 
+## Implementation Notes
+
+### Drag-to-Resize Split View
+To implement draggable split resizing:
+1. Create a semi-transparent divider overlay WebView between panes
+2. Add mouse event listeners for drag start/move/end
+3. Calculate new split ratio based on mouse position
+4. Send IPC message to adjust split ratio
+5. Update webview bounds in real-time during drag
+
+### Move Tabs Between Windows
+To implement drag-and-drop between windows:
+1. Add drag event listeners to tabs in tab bar
+2. Implement drag preview/ghost element
+3. Track mouse position across windows
+4. Detect drop target window
+5. Transfer tab state and webview to target window
+6. Update both tab bars via IPC
+
+### YouTube to Invidious Redirect
+- [x] Backend URL redirect logic (url_cleaner.rs)
+- [x] Client-side link interception (JavaScript injection)
+- [x] Configurable instance and toggle (Config struct)
+- [x] Handles all YouTube URL formats (youtu.be, shorts, embed, etc.)
+
 ## Known Issues
 
 - Document any bugs or issues here as they're discovered
@@ -165,4 +201,4 @@ This document tracks features and improvements needed to make Calm a fully usabl
 
 ---
 
-Last updated: 2025-11-26
+Last updated: 2025-11-27

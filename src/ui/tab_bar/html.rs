@@ -44,6 +44,28 @@ pub fn get_tab_bar_html_structure() -> &'static str {
                 <rect x="2" y="7" width="12" height="2"/>
             </svg>
         </button>
+        <button class="split-view-btn" id="split-view-btn" onclick="window.ipc.postMessage(JSON.stringify({action: 'toggle_split_view'}))" title="Toggle Split View (Cmd+Shift+S)">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" shape-rendering="crispEdges">
+                <rect x="2" y="2" width="5" height="12"/>
+                <rect x="9" y="2" width="5" height="12"/>
+            </svg>
+        </button>
+        <button class="split-orientation-btn" id="split-orientation-btn" onclick="window.ipc.postMessage(JSON.stringify({action: 'toggle_split_orientation'}))" title="Toggle Split Orientation" style="display: none;">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" shape-rendering="crispEdges">
+                <rect x="2" y="2" width="12" height="5"/>
+                <rect x="2" y="9" width="12" height="5"/>
+            </svg>
+        </button>
+        <button class="swap-panes-btn" id="swap-panes-btn" onclick="window.ipc.postMessage(JSON.stringify({action: 'swap_split_panes'}))" title="Swap Panes" style="display: none;">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" shape-rendering="crispEdges">
+                <rect x="2" y="7" width="4" height="2"/>
+                <rect x="6" y="5" width="2" height="2"/>
+                <rect x="6" y="9" width="2" height="2"/>
+                <rect x="10" y="7" width="4" height="2"/>
+                <rect x="8" y="3" width="2" height="2"/>
+                <rect x="8" y="11" width="2" height="2"/>
+            </svg>
+        </button>
     </div>
     <div id="tab-bar">
         <input type="text" class="url-bar" id="url-bar" placeholder="search or enter address" />

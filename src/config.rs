@@ -43,6 +43,7 @@ pub struct PrivacySettings {
     pub font_enumeration_restriction: bool,
 }
 
+/// Default value function for boolean fields (returns true).
 fn default_true() -> bool {
     true
 }
@@ -56,6 +57,7 @@ pub struct UiSettings {
     pub debug: bool,
 }
 
+/// Default value function for boolean fields (returns false).
 fn default_false() -> bool {
     false
 }
@@ -94,7 +96,7 @@ impl Default for PrivacySettings {
 }
 
 /// Main configuration structure for the Calm browser.
-/// Contains search engine, default URL, privacy settings, and UI settings.
+/// Contains search engine, default URL, privacy settings, UI settings, and redirect settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default = "default_search_engine")]
@@ -105,14 +107,25 @@ pub struct Config {
     pub privacy: PrivacySettings,
     #[serde(default)]
     pub ui: UiSettings,
+    #[serde(default = "default_false")]
+    pub redirect_youtube_to_invidious: bool,
+    #[serde(default = "default_invidious_instance")]
+    pub invidious_instance: String,
 }
 
+/// Default search engine URL template with placeholder for query.
 fn default_search_engine() -> String {
     "https://start.duckduckgo.com/?q={}".to_string()
 }
 
+/// Default start/home page URL.
 fn default_start_url() -> String {
     "https://start.duckduckgo.com".to_string()
+}
+
+/// Default Invidious instance for YouTube redirects.
+fn default_invidious_instance() -> String {
+    "yewtu.be".to_string()
 }
 
 impl Default for Config {
@@ -122,6 +135,8 @@ impl Default for Config {
             default_url: default_start_url(),
             privacy: PrivacySettings::default(),
             ui: UiSettings::default(),
+            redirect_youtube_to_invidious: false,
+            invidious_instance: default_invidious_instance(),
         }
     }
 }
@@ -151,6 +166,7 @@ impl Config {
         Ok(())
     }
 
+    /// Returns the path to the configuration file (~/.calm.yml).
     fn get_config_path() -> PathBuf {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
         PathBuf::from(home).join(".calm.yml")

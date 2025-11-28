@@ -296,12 +296,16 @@ pub fn get_tab_bar_script() -> &'static str {
         };
 
         document.addEventListener('keydown', (e) => {
-            if (!window.vimMode) {
+            const urlBar = document.getElementById('url-bar');
+            const isUrlBarFocused = document.activeElement === urlBar;
+
+            if (isUrlBarFocused) {
                 return;
             }
 
-            const urlBar = document.getElementById('url-bar');
-            const isUrlBarFocused = document.activeElement === urlBar;
+            if (!window.vimMode) {
+                return;
+            }
 
             if (!isUrlBarFocused) {
                 if (e.key === 'j') {
@@ -347,7 +351,7 @@ pub fn get_tab_bar_script() -> &'static str {
                     return;
                 }
             }
-        }, true);
+        }, false);
 
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
@@ -356,7 +360,7 @@ pub fn get_tab_bar_script() -> &'static str {
                     urlBar.blur();
                 }
             }
-        }, true);
+        }, false);
 
         document.addEventListener('mouseup', (e) => {
             if (e.button === 3) {
@@ -367,5 +371,21 @@ pub fn get_tab_bar_script() -> &'static str {
                 window.ipc.postMessage(JSON.stringify({action: 'navigate_forward'}));
             }
         }, true);
+
+        window.updateSplitViewButtons = function(enabled) {
+            const splitViewBtn = document.getElementById('split-view-btn');
+            const splitOrientationBtn = document.getElementById('split-orientation-btn');
+            const swapPanesBtn = document.getElementById('swap-panes-btn');
+
+            if (enabled) {
+                if (splitViewBtn) splitViewBtn.classList.add('active');
+                if (splitOrientationBtn) splitOrientationBtn.style.display = '';
+                if (swapPanesBtn) swapPanesBtn.style.display = '';
+            } else {
+                if (splitViewBtn) splitViewBtn.classList.remove('active');
+                if (splitOrientationBtn) splitOrientationBtn.style.display = 'none';
+                if (swapPanesBtn) swapPanesBtn.style.display = 'none';
+            }
+        };
     "#
 }

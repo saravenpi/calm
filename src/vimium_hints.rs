@@ -1,3 +1,5 @@
+/// Returns the Vimium-style link hints JavaScript code for injection into web pages.
+/// Provides keyboard-driven navigation similar to the Vimium browser extension.
 pub fn get_vimium_hints_script() -> &'static str {
     r#"
 function installVimiumHints() {

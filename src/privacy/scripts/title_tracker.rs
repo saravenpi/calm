@@ -2,6 +2,7 @@ pub fn get_title_tracker_script() -> &'static str {
     r#"
         (function() {
             let lastTitle = '';
+            let lastUrl = '';
             let historyLength = window.history.length;
             let historyPosition = window.history.length - 1;
 
@@ -18,6 +19,24 @@ pub fn get_title_tracker_script() -> &'static str {
                 }
             }
 
+            function updateUrl() {
+                const currentUrl = window.location.href;
+                if (currentUrl !== lastUrl) {
+                    lastUrl = currentUrl;
+                    if (window.ipc) {
+                        window.ipc.postMessage(JSON.stringify({
+                            action: 'update_url',
+                            url: currentUrl
+                        }));
+                    }
+                }
+            }
+
+            function updateTitleAndUrl() {
+                updateTitle();
+                updateUrl();
+            }
+
             function updateNavigationState() {
                 if (window.ipc) {
                     const canGoBack = historyPosition > 0;
@@ -32,31 +51,31 @@ pub fn get_title_tracker_script() -> &'static str {
             }
 
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', updateTitle);
+                document.addEventListener('DOMContentLoaded', updateTitleAndUrl);
             } else {
-                updateTitle();
+                updateTitleAndUrl();
             }
 
             window.addEventListener('load', () => {
-                updateTitle();
+                updateTitleAndUrl();
                 updateNavigationState();
             });
 
             window.addEventListener('beforeunload', () => {
-                updateTitle();
+                updateTitleAndUrl();
             });
 
             window.addEventListener('popstate', (event) => {
                 setTimeout(() => {
-                    updateTitle();
+                    updateTitleAndUrl();
                     updateNavigationState();
                 }, 0);
-                setTimeout(updateTitle, 50);
-                setTimeout(updateTitle, 200);
+                setTimeout(updateTitleAndUrl, 50);
+                setTimeout(updateTitleAndUrl, 200);
             });
 
             window.addEventListener('pageshow', (event) => {
-                updateTitle();
+                updateTitleAndUrl();
                 updateNavigationState();
             });
 
@@ -70,13 +89,13 @@ pub fn get_title_tracker_script() -> &'static str {
                 historyPosition++;
                 historyLength = historyPosition + 1;
                 updateNavigationState();
-                updateTitle();
+                updateTitleAndUrl();
             };
 
             history.replaceState = function() {
                 originalReplaceState.apply(this, arguments);
                 updateNavigationState();
-                updateTitle();
+                updateTitleAndUrl();
             };
 
             history.back = function() {
@@ -95,7 +114,7 @@ pub fn get_title_tracker_script() -> &'static str {
                 originalForward.apply(this, arguments);
             };
 
-            const titleObserver = new MutationObserver(updateTitle);
+            const titleObserver = new MutationObserver(updateTitleAndUrl);
 
             if (document.querySelector('title')) {
                 titleObserver.observe(
@@ -112,7 +131,7 @@ pub fn get_title_tracker_script() -> &'static str {
                                 node,
                                 { childList: true, characterData: true, subtree: true }
                             );
-                            updateTitle();
+                            updateTitleAndUrl();
                         }
                     });
                 });
@@ -122,7 +141,7 @@ pub fn get_title_tracker_script() -> &'static str {
                 headObserver.observe(document.head, { childList: true });
             }
 
-            setInterval(updateTitle, 1000);
+            setInterval(updateTitleAndUrl, 1000);
             updateNavigationState();
         })();
     "#

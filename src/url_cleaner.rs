@@ -1,4 +1,5 @@
 use url::Url;
+use crate::config::Config;
 
 /// List of known tracking parameter names to remove from URLs.
 const TRACKING_PARAMS: &[&str] = &[
@@ -76,6 +77,94 @@ const TRACKING_PREFIXES: &[&str] = &[
     "pk_",
 ];
 
+/// Checks if a hostname is a YouTube domain.
+fn is_youtube_url(host: &str) -> bool {
+    matches!(host, "youtube.com" | "www.youtube.com" | "m.youtube.com" | "youtu.be")
+}
+
+/// Extracts YouTube video ID from a path given a prefix.
+fn extract_video_id_from_path(path: &str, prefix: &str) -> Option<String> {
+    path.strip_prefix(prefix)
+        .and_then(|s| s.split('/').next())
+        .filter(|id| !id.is_empty())
+        .map(|id| id.to_string())
+}
+
+/// Converts video ID and query parameters to standard YouTube watch URL format.
+fn convert_to_watch_url(video_id: &str, query: &str) -> (String, String) {
+    let new_query = if query.is_empty() {
+        format!("v={}", video_id)
+    } else {
+        format!("v={}&{}", video_id, query)
+    };
+    ("/watch".to_string(), new_query)
+}
+
+/// Processes YouTube URL paths and converts various formats to standard watch URLs.
+fn process_youtube_path(host: &str, path: &str, query: &str) -> (String, String) {
+    if host == "youtu.be" {
+        if let Some(video_id) = extract_video_id_from_path(path, "/") {
+            return convert_to_watch_url(&video_id, query);
+        }
+    }
+
+    let video_path_prefixes = ["/shorts/", "/embed/", "/v/", "/live/"];
+    for prefix in &video_path_prefixes {
+        if let Some(video_id) = extract_video_id_from_path(path, prefix) {
+            return convert_to_watch_url(&video_id, query);
+        }
+    }
+
+    (path.to_string(), query.to_string())
+}
+
+/// Redirects YouTube URLs to an Invidious instance if enabled in config.
+///
+/// Handles all YouTube URL formats:
+/// - youtube.com/watch?v=VIDEO_ID
+/// - youtu.be/VIDEO_ID
+/// - youtube.com/embed/VIDEO_ID
+/// - youtube.com/v/VIDEO_ID
+/// - youtube.com/shorts/VIDEO_ID (converted to regular watch)
+/// - youtube.com/live/VIDEO_ID
+/// - youtube.com/channel/CHANNEL_ID
+/// - youtube.com/c/CHANNEL_NAME
+/// - youtube.com/@USERNAME
+/// - youtube.com/playlist?list=PLAYLIST_ID
+///
+/// # Arguments
+/// * `url_str` - The URL string to potentially redirect
+/// * `config` - The configuration containing redirect settings
+///
+/// # Returns
+/// * `String` - The redirected URL if it's a YouTube URL and redirect is enabled, otherwise the original URL
+pub fn redirect_youtube_to_invidious(url_str: &str, config: &Config) -> String {
+    if !config.redirect_youtube_to_invidious {
+        return url_str.to_string();
+    }
+
+    let url = match Url::parse(url_str) {
+        Ok(u) => u,
+        Err(_) => return url_str.to_string(),
+    };
+
+    let host = match url.host_str() {
+        Some(h) if is_youtube_url(h) => h,
+        _ => return url_str.to_string(),
+    };
+
+    let path = url.path();
+    let query = url.query().unwrap_or("");
+
+    let (new_path, new_query) = process_youtube_path(host, path, query);
+
+    if new_query.is_empty() {
+        format!("https://{}{}", config.invidious_instance, new_path)
+    } else {
+        format!("https://{}{}?{}", config.invidious_instance, new_path, new_query)
+    }
+}
+
 /// Removes tracking parameters from a URL string.
 /// Returns a cleaned URL with all known tracking parameters removed.
 ///
@@ -139,6 +228,126 @@ pub fn clean_url(url_str: &str) -> Result<String, url::ParseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_youtube_redirect_disabled() {
+        let config = Config {
+            redirect_youtube_to_invidious: false,
+            invidious_instance: "inv.nadeko.net".to_string(),
+            ..Config::default()
+        };
+        let url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+        let result = redirect_youtube_to_invidious(url, &config);
+        assert_eq!(result, url);
+    }
+
+    #[test]
+    fn test_youtube_watch_redirect() {
+        let config = Config {
+            redirect_youtube_to_invidious: true,
+            invidious_instance: "inv.nadeko.net".to_string(),
+            ..Config::default()
+        };
+        let url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+        let result = redirect_youtube_to_invidious(url, &config);
+        assert_eq!(result, "https://inv.nadeko.net/watch?v=dQw4w9WgXcQ");
+    }
+
+    #[test]
+    fn test_youtu_be_redirect() {
+        let config = Config {
+            redirect_youtube_to_invidious: true,
+            invidious_instance: "inv.nadeko.net".to_string(),
+            ..Config::default()
+        };
+        let url = "https://youtu.be/dQw4w9WgXcQ";
+        let result = redirect_youtube_to_invidious(url, &config);
+        assert_eq!(result, "https://inv.nadeko.net/watch?v=dQw4w9WgXcQ");
+    }
+
+    #[test]
+    fn test_youtube_shorts_redirect() {
+        let config = Config {
+            redirect_youtube_to_invidious: true,
+            invidious_instance: "inv.nadeko.net".to_string(),
+            ..Config::default()
+        };
+        let url = "https://www.youtube.com/shorts/dQw4w9WgXcQ";
+        let result = redirect_youtube_to_invidious(url, &config);
+        assert_eq!(result, "https://inv.nadeko.net/watch?v=dQw4w9WgXcQ");
+    }
+
+    #[test]
+    fn test_youtube_embed_redirect() {
+        let config = Config {
+            redirect_youtube_to_invidious: true,
+            invidious_instance: "inv.nadeko.net".to_string(),
+            ..Config::default()
+        };
+        let url = "https://www.youtube.com/embed/dQw4w9WgXcQ";
+        let result = redirect_youtube_to_invidious(url, &config);
+        assert_eq!(result, "https://inv.nadeko.net/watch?v=dQw4w9WgXcQ");
+    }
+
+    #[test]
+    fn test_youtube_live_redirect() {
+        let config = Config {
+            redirect_youtube_to_invidious: true,
+            invidious_instance: "inv.nadeko.net".to_string(),
+            ..Config::default()
+        };
+        let url = "https://www.youtube.com/live/dQw4w9WgXcQ";
+        let result = redirect_youtube_to_invidious(url, &config);
+        assert_eq!(result, "https://inv.nadeko.net/watch?v=dQw4w9WgXcQ");
+    }
+
+    #[test]
+    fn test_youtube_channel_redirect() {
+        let config = Config {
+            redirect_youtube_to_invidious: true,
+            invidious_instance: "inv.nadeko.net".to_string(),
+            ..Config::default()
+        };
+        let url = "https://www.youtube.com/channel/UC123456789";
+        let result = redirect_youtube_to_invidious(url, &config);
+        assert_eq!(result, "https://inv.nadeko.net/channel/UC123456789");
+    }
+
+    #[test]
+    fn test_youtube_at_username_redirect() {
+        let config = Config {
+            redirect_youtube_to_invidious: true,
+            invidious_instance: "inv.nadeko.net".to_string(),
+            ..Config::default()
+        };
+        let url = "https://www.youtube.com/@username";
+        let result = redirect_youtube_to_invidious(url, &config);
+        assert_eq!(result, "https://inv.nadeko.net/@username");
+    }
+
+    #[test]
+    fn test_youtube_with_timestamp() {
+        let config = Config {
+            redirect_youtube_to_invidious: true,
+            invidious_instance: "inv.nadeko.net".to_string(),
+            ..Config::default()
+        };
+        let url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42s";
+        let result = redirect_youtube_to_invidious(url, &config);
+        assert_eq!(result, "https://inv.nadeko.net/watch?v=dQw4w9WgXcQ&t=42s");
+    }
+
+    #[test]
+    fn test_youtu_be_with_timestamp() {
+        let config = Config {
+            redirect_youtube_to_invidious: true,
+            invidious_instance: "inv.nadeko.net".to_string(),
+            ..Config::default()
+        };
+        let url = "https://youtu.be/dQw4w9WgXcQ?t=42";
+        let result = redirect_youtube_to_invidious(url, &config);
+        assert_eq!(result, "https://inv.nadeko.net/watch?v=dQw4w9WgXcQ&t=42");
+    }
 
     #[test]
     fn test_removes_utm_parameters() {

@@ -277,6 +277,8 @@ pub fn get_settings_html() -> String {
                     blockCookies: document.getElementById('block-cookies').checked,
                 };
 
+                console.log('Saving settings:', settings);
+
                 const message = JSON.stringify({
                     action: 'save_settings',
                     settings: settings
@@ -292,6 +294,7 @@ pub fn get_settings_html() -> String {
             }
 
             function loadSettings() {
+                console.log('Loading settings...');
                 const message = JSON.stringify({
                     action: 'load_settings'
                 });
@@ -299,22 +302,29 @@ pub fn get_settings_html() -> String {
             }
 
             window.updateSettings = function(settings) {
+                console.log('Received settings:', settings);
                 if (settings.defaultUrl) {
+                    console.log('Setting default URL to:', settings.defaultUrl);
                     document.getElementById('default-url').value = settings.defaultUrl;
                 }
                 if (settings.searchEngine) {
+                    console.log('Setting search engine to:', settings.searchEngine);
                     document.getElementById('search-engine').value = settings.searchEngine;
                 }
                 if (settings.vimMode !== undefined) {
+                    console.log('Setting vim mode to:', settings.vimMode);
                     document.getElementById('vim-mode').checked = settings.vimMode;
                 }
                 if (settings.blockTrackers !== undefined) {
+                    console.log('Setting block trackers to:', settings.blockTrackers);
                     document.getElementById('block-trackers').checked = settings.blockTrackers;
                 }
                 if (settings.blockFingerprinting !== undefined) {
+                    console.log('Setting block fingerprinting to:', settings.blockFingerprinting);
                     document.getElementById('block-fingerprinting').checked = settings.blockFingerprinting;
                 }
                 if (settings.blockCookies !== undefined) {
+                    console.log('Setting block cookies to:', settings.blockCookies);
                     document.getElementById('block-cookies').checked = settings.blockCookies;
                 }
             };
@@ -350,15 +360,10 @@ pub fn get_settings_html() -> String {
             <div class="setting-item">
                 <div class="setting-info">
                     <div class="setting-label">Search Engine</div>
-                    <div class="setting-description">Default search engine for queries</div>
+                    <div class="setting-description">Default search engine URL (use {{}} as query placeholder)</div>
                 </div>
                 <div class="setting-control">
-                    <select id="search-engine">
-                        <option value="https://duckduckgo.com/?q={{}}">DuckDuckGo</option>
-                        <option value="https://www.google.com/search?q={{}}">Google</option>
-                        <option value="https://www.bing.com/search?q={{}}">Bing</option>
-                        <option value="https://search.brave.com/search?q={{}}">Brave</option>
-                    </select>
+                    <input type="text" id="search-engine" placeholder="https://start.duckduckgo.com/?q={{}}">
                 </div>
             </div>
         </div>

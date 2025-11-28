@@ -5,32 +5,35 @@ mod tabs;
 mod ui;
 mod url_cleaner;
 mod vimium_hints;
+mod window;
 
-use std::{cell::RefCell, rc::Rc, time::Instant};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Instant};
 use tao::{
     event::{Event, WindowEvent, ElementState},
     event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
     keyboard::ModifiersState,
+    window::WindowId,
 };
 use global_hotkey::{
     GlobalHotKeyManager, GlobalHotKeyEvent,
     hotkey::{HotKey, Modifiers, Code},
 };
+use muda::{Menu, Submenu, PredefinedMenuItem};
 
-#[cfg(target_os = "macos")]
-use tao::platform::macos::WindowBuilderExtMacOS;
-
-use tabs::TabManager;
 use config::Config;
+use window::{create_browser_window, BrowserWindowComponents};
 
-/// Width of the tab sidebar UI element in pixels.
-const TAB_SIDEBAR_WIDTH: u32 = 250;
-
-/// Width of the download sidebar when visible, in pixels.
 const DOWNLOAD_SIDEBAR_WIDTH: i32 = 360;
 
-/// Converts file:// URLs to calmfile://localhost for custom protocol handling.
+/// Converts file:// URLs to calmfile://localhost URLs for custom protocol handling.
+///
+/// # Arguments
+///
+/// * `url` - The URL string to convert
+///
+/// # Returns
+///
+/// The converted URL string
 fn convert_file_url(url: &str) -> String {
     if url.starts_with("file://") {
         url.replace("file://", "calmfile://localhost")
@@ -45,7 +48,7 @@ fn main() -> wry::Result<()> {
     if !args.is_empty() {
         let first_arg = &args[0];
         if first_arg == "--version" || first_arg == "-v" {
-            println!("Calm Browser v0.2.0");
+            println!("Calm Browser v0.3.0");
             println!("A privacy-focused minimalist web browser");
             println!("Built with Rust, TAO, and WRY");
             return Ok(());
@@ -64,6 +67,13 @@ fn main() -> wry::Result<()> {
             println!("CONFIGURATION:");
             println!("    Edit ~/.calm.yml to configure default URL and search engine");
             println!();
+            println!("KEYBOARD SHORTCUTS:");
+            println!("    Cmd+N                   Open new window");
+            println!("    Cmd+T                   Open new tab");
+            println!("    Cmd+W                   Close tab/window");
+            println!("    Cmd+L                   Focus URL bar");
+            println!("    Cmd+R                   Reload page");
+            println!();
             println!("EXAMPLES:");
             println!("    calm");
             println!("    calm https://example.com");
@@ -73,8 +83,6 @@ fn main() -> wry::Result<()> {
     }
 
     let config = Config::load();
-
-    // Initialize debug logging based on config
     debug::set_debug_enabled(config.ui.debug);
     debug_log!("Debug mode enabled");
     debug_log!("Config loaded: vim_mode={}, debug={}", config.ui.vim_mode, config.ui.debug);
@@ -82,28 +90,24 @@ fn main() -> wry::Result<()> {
     let event_loop = EventLoop::new();
 
     #[cfg(target_os = "macos")]
-    let window = Rc::new(
-        WindowBuilder::new()
-            .with_title("Calm Browser - Privacy-Focused")
-            .with_inner_size(tao::dpi::LogicalSize::new(1200, 800))
-            .with_title_hidden(true)
-            .with_titlebar_transparent(true)
-            .with_fullsize_content_view(true)
-            .build(&event_loop)
-            .unwrap()
-    );
+    {
+        let menu_bar = Menu::new();
 
-    #[cfg(not(target_os = "macos"))]
-    let window = Rc::new(
-        WindowBuilder::new()
-            .with_title("Calm Browser - Privacy-Focused")
-            .with_inner_size(tao::dpi::LogicalSize::new(1200, 800))
-            .build(&event_loop)
-            .unwrap()
-    );
+        let edit_menu = Submenu::new("Edit", true);
+        edit_menu.append_items(&[
+            &PredefinedMenuItem::copy(None),
+            &PredefinedMenuItem::cut(None),
+            &PredefinedMenuItem::paste(None),
+            &PredefinedMenuItem::separator(),
+            &PredefinedMenuItem::select_all(None),
+        ]).expect("Failed to append Edit menu items");
+
+        menu_bar.append(&edit_menu).expect("Failed to append Edit menu");
+        menu_bar.init_for_nsapp();
+    }
 
     let (initial_url, use_welcome_html) = if args.is_empty() {
-        ("".to_string(), true)
+        (convert_file_url(&config.default_url), false)
     } else {
         let first_arg = &args[0];
         let url = if first_arg.starts_with("http://") || first_arg.starts_with("https://") || first_arg.starts_with("file://") {
@@ -120,18 +124,30 @@ fn main() -> wry::Result<()> {
     };
 
     let config = Rc::new(RefCell::new(config));
-    let tab_manager = Rc::new(RefCell::new(TabManager::new(TAB_SIDEBAR_WIDTH, config.borrow().clone())));
-    let tab_bar_webview_ref: Rc<RefCell<Option<Rc<wry::WebView>>>> = Rc::new(RefCell::new(None));
-    let download_overlay_ref: Rc<RefCell<Option<Rc<wry::WebView>>>> = Rc::new(RefCell::new(None));
-    let sidebar_visible = Rc::new(RefCell::new(false));
-    let should_quit = Rc::new(RefCell::new(false));
+
+    let mut windows: HashMap<WindowId, BrowserWindowComponents> = HashMap::new();
+    let focused_window_id = Rc::new(RefCell::new(None::<WindowId>));
+
+    let first_window = create_browser_window(
+        &event_loop,
+        Rc::clone(&config),
+        initial_url.clone(),
+        use_welcome_html,
+    )?;
+
+    let first_window_id = first_window.window.id();
+    *focused_window_id.borrow_mut() = Some(first_window_id);
+    windows.insert(first_window_id, first_window);
+
+    let windows_ref = Rc::new(RefCell::new(windows));
     let last_g_key_time = Rc::new(RefCell::new(None::<Instant>));
     let last_new_tab_time = Rc::new(RefCell::new(None::<Instant>));
     let last_close_tab_time = Rc::new(RefCell::new(None::<Instant>));
+    let last_new_window_time = Rc::new(RefCell::new(None::<Instant>));
+    let last_toggle_downloads_time = Rc::new(RefCell::new(None::<Instant>));
     let modifiers_state = Rc::new(RefCell::new(ModifiersState::default()));
 
     let hotkey_manager = GlobalHotKeyManager::new().expect("Failed to create hotkey manager");
-
     let cmd_or_ctrl = if cfg!(target_os = "macos") { Modifiers::SUPER } else { Modifiers::CONTROL };
 
     let hotkey_reload = HotKey::new(Some(cmd_or_ctrl), Code::KeyR);
@@ -141,6 +157,8 @@ fn main() -> wry::Result<()> {
     let hotkey_find = HotKey::new(Some(cmd_or_ctrl), Code::KeyF);
     let hotkey_new_tab = HotKey::new(Some(cmd_or_ctrl), Code::KeyT);
     let hotkey_close_tab = HotKey::new(Some(cmd_or_ctrl), Code::KeyW);
+    let hotkey_new_window = HotKey::new(Some(cmd_or_ctrl), Code::KeyN);
+    let hotkey_split_view = HotKey::new(Some(cmd_or_ctrl | Modifiers::SHIFT), Code::KeyS);
     let hotkey_quit = HotKey::new(Some(cmd_or_ctrl), Code::KeyQ);
 
     hotkey_manager.register(hotkey_reload).expect("Failed to register Cmd+R");
@@ -150,304 +168,32 @@ fn main() -> wry::Result<()> {
     hotkey_manager.register(hotkey_find).expect("Failed to register Cmd+F");
     hotkey_manager.register(hotkey_new_tab).expect("Failed to register Cmd+T");
     hotkey_manager.register(hotkey_close_tab).expect("Failed to register Cmd+W");
+    hotkey_manager.register(hotkey_new_window).expect("Failed to register Cmd+N");
+    hotkey_manager.register(hotkey_split_view).expect("Failed to register Cmd+Shift+S");
     hotkey_manager.register(hotkey_quit).expect("Failed to register Cmd+Q");
 
-    let window_size = window.inner_size();
-    let tab_bar_webview = Rc::new(
-        wry::WebViewBuilder::new()
-            .with_html(&ui::get_complete_tab_bar_html(config.borrow().ui.vim_mode))
-            .with_transparent(true)
-            .with_bounds(wry::Rect {
-                position: tao::dpi::LogicalPosition::new(0, 0).into(),
-                size: tao::dpi::LogicalSize::new(TAB_SIDEBAR_WIDTH, window_size.height).into(),
-            })
-            .with_ipc_handler({
-                let tab_manager = Rc::clone(&tab_manager);
-                let window = Rc::clone(&window);
-                let tab_bar_webview_ref = Rc::clone(&tab_bar_webview_ref);
-                let download_overlay_ref = Rc::clone(&download_overlay_ref);
-                let sidebar_visible = Rc::clone(&sidebar_visible);
-                let config = Rc::clone(&config);
-                let should_quit = Rc::clone(&should_quit);
-                move |request| {
-                    let body = request.body();
-
-                    if let Ok(data) = serde_json::from_str::<serde_json::Value>(body) {
-                        match data["action"].as_str() {
-                            Some("switch_tab") => {
-                                if let Some(tab_id) = data["tabId"].as_u64() {
-                                    tab_manager.borrow_mut().switch_to_tab(tab_id as usize);
-                                }
-                            }
-                            Some("close_tab") => {
-                                if let Some(tab_id) = data["tabId"].as_u64() {
-                                    debug_log!("=== IPC close_tab received for tab ID: {} ===", tab_id);
-                                    let tab_count = tab_manager.borrow().get_tab_count();
-                                    debug_log!("Current tab count: {}", tab_count);
-                                    if tab_count == 1 {
-                                        debug_log!("Last tab - quitting via IPC");
-                                        *should_quit.borrow_mut() = true;
-                                    } else {
-                                        tab_manager.borrow_mut().close_tab(tab_id as usize);
-                                        if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
-                                            let script = format!("window.removeTab({});", tab_id);
-                                            let _ = webview.evaluate_script(&script);
-                                        }
-                                        debug_log!("Tab {} closed via IPC", tab_id);
-                                    }
-                                }
-                            }
-                            Some("quit_app") => {
-                                *should_quit.borrow_mut() = true;
-                            }
-                            Some("new_tab") => {
-                                debug_log!("=== IPC new_tab action received ===");
-                                let tab_count_before = tab_manager.borrow().get_tab_count();
-                                debug_log!("IPC Tab count before: {}", tab_count_before);
-
-                                let welcome_html = ui::get_welcome_html();
-                                let tab_result = tab_manager.borrow_mut().create_tab_with_html(&window, &welcome_html);
-                                if let Ok(tab_id) = tab_result {
-                                    debug_log!("IPC Created tab with ID: {}", tab_id);
-                                    tab_manager.borrow_mut().switch_to_tab(tab_id);
-                                    if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
-                                        let script = format!(
-                                            "window.addTab({}, 'calm://welcome'); window.setActiveTab({}); window.updateUrlBar('');",
-                                            tab_id,
-                                            tab_id
-                                        );
-                                        let _ = webview.evaluate_script(&script);
-
-                                        let focus_script = "document.getElementById('url-bar')?.focus();";
-                                        let _ = webview.evaluate_script(focus_script);
-                                    }
-                                    let tab_count_after = tab_manager.borrow().get_tab_count();
-                                    debug_log!("IPC Tab count after: {}", tab_count_after);
-                                }
-                            }
-                            Some("open_url_new_tab") => {
-                                if let Some(url) = data["url"].as_str() {
-                                    let tab_result = tab_manager.borrow_mut().create_tab(&window, url);
-                                    if let Ok(tab_id) = tab_result {
-                                        tab_manager.borrow_mut().switch_to_tab(tab_id);
-                                        if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
-                                            let escaped_url = serde_json::to_string(&url).unwrap_or_else(|_| "\"\"".to_string());
-                                            let script = format!(
-                                                "window.addTab({}, {}); window.setActiveTab({}); window.updateUrlBar({});",
-                                                tab_id,
-                                                escaped_url,
-                                                tab_id,
-                                                escaped_url
-                                            );
-                                            let _ = webview.evaluate_script(&script);
-                                        }
-                                    }
-                                }
-                            }
-                            Some("reload_tab") => {
-                                tab_manager.borrow().reload_active_tab();
-                            }
-                            Some("navigate_back") => {
-                                tab_manager.borrow().navigate_back();
-                            }
-                            Some("navigate_forward") => {
-                                tab_manager.borrow().navigate_forward();
-                            }
-                            Some("toggle_downloads") => {
-                                let mut is_visible = sidebar_visible.borrow_mut();
-                                *is_visible = !*is_visible;
-
-                                if let Some(ref overlay) = *download_overlay_ref.borrow() {
-                                    if *is_visible {
-                                        let _ = overlay.set_visible(true);
-                                        std::thread::sleep(std::time::Duration::from_millis(10));
-                                        let script = "window.toggleVisibility(true);";
-                                        let _ = overlay.evaluate_script(script);
-                                        tab_manager.borrow_mut().resize_all_tabs_with_sidebar(&window, DOWNLOAD_SIDEBAR_WIDTH as u32);
-                                    } else {
-                                        let script = "window.toggleVisibility(false);";
-                                        let _ = overlay.evaluate_script(script);
-                                        std::thread::sleep(std::time::Duration::from_millis(300));
-                                        let _ = overlay.set_visible(false);
-                                        tab_manager.borrow_mut().resize_all_tabs(&window);
-                                    }
-                                }
-                            }
-                            Some("focus_url_bar") => {
-                                let script = "const urlBar = document.getElementById('url-bar'); if (urlBar) { urlBar.focus(); urlBar.select(); }";
-                                let _ = match &*tab_bar_webview_ref.borrow() {
-                                    Some(ref webview) => webview.evaluate_script(script),
-                                    None => Ok(()),
-                                };
-                            }
-                            Some("open_settings") => {
-                                let settings_html = ui::get_settings_html();
-                                let tab_result = tab_manager.borrow_mut().create_tab_with_html(&window, &settings_html);
-                                if let Ok(tab_id) = tab_result {
-                                    tab_manager.borrow_mut().switch_to_tab(tab_id);
-                                    if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
-                                        let script = format!(
-                                            "window.addTab({}, 'calm://settings'); window.setActiveTab({}); window.updateUrlBar('calm://settings');",
-                                            tab_id,
-                                            tab_id
-                                        );
-                                        let _ = webview.evaluate_script(&script);
-                                    }
-                                }
-                            }
-                            Some("load_settings") => {
-                                if let Some(webview) = tab_manager.borrow().get_active_tab_webview() {
-                                    let cfg = config.borrow();
-                                    let settings_obj = serde_json::json!({
-                                        "defaultUrl": cfg.default_url,
-                                        "searchEngine": cfg.search_engine,
-                                        "vimMode": cfg.ui.vim_mode,
-                                        "blockTrackers": cfg.privacy.tracking_domain_blocking,
-                                        "blockFingerprinting": cfg.privacy.canvas_fingerprint_protection,
-                                        "blockCookies": true,
-                                    });
-                                    let script = format!("if (window.updateSettings) {{ window.updateSettings({}); }}", settings_obj);
-                                    let _ = webview.evaluate_script(&script);
-                                }
-                            }
-                            Some("save_settings") => {
-                                if let Some(settings) = data["settings"].as_object() {
-                                    let mut cfg = config.borrow_mut();
-
-                                    if let Some(default_url) = settings.get("defaultUrl").and_then(|v| v.as_str()) {
-                                        cfg.default_url = default_url.to_string();
-                                    }
-                                    if let Some(search_engine) = settings.get("searchEngine").and_then(|v| v.as_str()) {
-                                        cfg.search_engine = search_engine.to_string();
-                                    }
-                                    if let Some(vim_mode) = settings.get("vimMode").and_then(|v| v.as_bool()) {
-                                        cfg.ui.vim_mode = vim_mode;
-                                    }
-                                    if let Some(block_trackers) = settings.get("blockTrackers").and_then(|v| v.as_bool()) {
-                                        cfg.privacy.tracking_domain_blocking = block_trackers;
-                                    }
-                                    if let Some(block_fp) = settings.get("blockFingerprinting").and_then(|v| v.as_bool()) {
-                                        cfg.privacy.canvas_fingerprint_protection = block_fp;
-                                        cfg.privacy.webgl_fingerprint_protection = block_fp;
-                                        cfg.privacy.audio_fingerprint_protection = block_fp;
-                                    }
-
-                                    let _ = cfg.save();
-                                }
-                            }
-                            Some("navigate_url") => {
-                                if let Some(url_str) = data["url"].as_str() {
-                                    let cfg = config.borrow();
-                                    let url = if url_str.is_empty() {
-                                        convert_file_url(&cfg.default_url)
-                                    } else if url_str.contains("://") {
-                                        convert_file_url(url_str)
-                                    } else {
-                                        let is_likely_url = url_str.contains('.') &&
-                                                           !url_str.contains(' ') &&
-                                                           (url_str.starts_with("localhost") ||
-                                                            url_str.contains("..") == false &&
-                                                            url_str.split('.').count() >= 2);
-
-                                        if is_likely_url {
-                                            format!("https://{}", url_str)
-                                        } else {
-                                            cfg.format_search_url(url_str)
-                                        }
-                                    };
-                                    drop(cfg);
-
-                                    let active_tab_id = tab_manager.borrow().get_active_tab_id();
-                                    if let Some(tab_id) = active_tab_id {
-                                        tab_manager.borrow_mut().navigate_to(tab_id, &url);
-                                    } else {
-                                        let tab_result = tab_manager.borrow_mut().create_tab(&window, &url);
-                                        if let Ok(tab_id) = tab_result {
-                                            tab_manager.borrow_mut().switch_to_tab(tab_id);
-                                            if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
-                                                let escaped_url = serde_json::to_string(&url).unwrap_or_else(|_| "\"\"".to_string());
-                                                let script = format!(
-                                                    "window.addTab({}, {}); window.setActiveTab({}); window.updateUrlBar({});",
-                                                    tab_id,
-                                                    escaped_url,
-                                                    tab_id,
-                                                    escaped_url
-                                                );
-                                                let _ = webview.evaluate_script(&script);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            })
-            .build_as_child(window.as_ref())?
-    );
-
-    *tab_bar_webview_ref.borrow_mut() = Some(Rc::clone(&tab_bar_webview));
-    tab_manager.borrow_mut().set_tab_bar_webview(Rc::clone(&tab_bar_webview));
-
-    let download_overlay = Rc::new(
-        wry::WebViewBuilder::new()
-            .with_html(&ui::get_download_overlay_html())
-            .with_bounds(wry::Rect {
-                position: tao::dpi::LogicalPosition::new(
-                    (window_size.width as i32) - DOWNLOAD_SIDEBAR_WIDTH,
-                    0
-                ).into(),
-                size: tao::dpi::LogicalSize::new(DOWNLOAD_SIDEBAR_WIDTH as u32, window_size.height).into(),
-            })
-            .with_visible(false)
-            .build_as_child(window.as_ref())?
-    );
-
-    *download_overlay_ref.borrow_mut() = Some(Rc::clone(&download_overlay));
-    tab_manager.borrow_mut().set_download_overlay(Rc::clone(&download_overlay));
-
-    {
-        let mut manager = tab_manager.borrow_mut();
-        let tab_result = if use_welcome_html {
-            let welcome_html = ui::get_welcome_html();
-            manager.create_tab_with_html(&window, &welcome_html)
-        } else {
-            manager.create_tab(&window, &initial_url)
-        };
-
-        match tab_result {
-            Ok(tab_id) => {
-                manager.switch_to_tab(tab_id);
-                let display_url = if use_welcome_html {
-                    "calm://welcome".to_string()
-                } else {
-                    initial_url.clone()
-                };
-                let escaped_url = serde_json::to_string(&display_url).unwrap_or_else(|_| "\"\"".to_string());
-                let script = format!(
-                    "window.addTab({}, {}); window.setActiveTab({}); window.updateUrlBar('');",
-                    tab_id,
-                    escaped_url,
-                    tab_id
-                );
-                let _ = tab_bar_webview.evaluate_script(&script);
-            }
-            Err(_) => {}
-        }
-    }
-
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |event, event_loop_target, control_flow| {
         *control_flow = ControlFlow::Wait;
 
-        if *should_quit.borrow() {
+        let mut windows_to_close = Vec::new();
+        for (window_id, components) in windows_ref.borrow().iter() {
+            if *components.should_quit.borrow() {
+                windows_to_close.push(*window_id);
+            }
+        }
+
+        for window_id in windows_to_close {
+            debug_log!("Closing window: {:?}", window_id);
+            windows_ref.borrow_mut().remove(&window_id);
+        }
+
+        if windows_ref.borrow().is_empty() {
             *control_flow = ControlFlow::Exit;
             return;
         }
 
         if let Ok(global_hotkey_event) = GlobalHotKeyEvent::receiver().try_recv() {
             let hotkey_id = global_hotkey_event.id();
-
             debug_log!("GlobalHotKey event received: id={}", hotkey_id);
 
             let mut drained_count = 0;
@@ -467,136 +213,65 @@ fn main() -> wry::Result<()> {
             if hotkey_id == hotkey_quit.id() {
                 *control_flow = ControlFlow::Exit;
                 return;
-            } else if hotkey_id == hotkey_reload.id() {
-                tab_manager.borrow().reload_active_tab();
-            } else if hotkey_id == hotkey_focus_url.id() {
-                if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
-                    let script = "const urlBar = document.getElementById('url-bar'); if (urlBar) { urlBar.focus(); urlBar.select(); }";
-                    let _ = webview.evaluate_script(script);
-                }
-            } else if hotkey_id == hotkey_toggle_downloads.id() {
-                let mut is_visible = sidebar_visible.borrow_mut();
-                *is_visible = !*is_visible;
-
-                if let Some(ref overlay) = *download_overlay_ref.borrow() {
-                    if *is_visible {
-                        let _ = overlay.set_visible(true);
-                        std::thread::sleep(std::time::Duration::from_millis(10));
-                        let script = "window.toggleVisibility(true);";
-                        let _ = overlay.evaluate_script(script);
-                        tab_manager.borrow_mut().resize_all_tabs_with_sidebar(&window, DOWNLOAD_SIDEBAR_WIDTH as u32);
-                    } else {
-                        let script = "window.toggleVisibility(false);";
-                        let _ = overlay.evaluate_script(script);
-                        std::thread::sleep(std::time::Duration::from_millis(300));
-                        let _ = overlay.set_visible(false);
-                        tab_manager.borrow_mut().resize_all_tabs(&window);
-                    }
-                }
-            } else if hotkey_id == hotkey_focus_sidebar.id() {
-                if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
-                    let _ = webview.focus();
-                    let script = "window.showSidebarFocus(); if (window.tabs.length > 0) { if (window.focusedTabIndex < 0) { window.updateFocusedTab(0); } else { window.updateFocusedTab(window.focusedTabIndex); } }";
-                    let _ = webview.evaluate_script(script);
-                }
-            } else if hotkey_id == hotkey_find.id() {
-                if let Some(active_webview) = tab_manager.borrow().get_active_tab_webview() {
-                    let _ = active_webview.evaluate_script("window.calmStartSearch();");
-                }
-            } else if hotkey_id == hotkey_new_tab.id() {
+            } else if hotkey_id == hotkey_new_window.id() {
                 let now = Instant::now();
                 let should_execute = {
-                    let mut last_time = last_new_tab_time.borrow_mut();
+                    let mut last_time = last_new_window_time.borrow_mut();
                     if let Some(last) = *last_time {
                         let elapsed = now.duration_since(last).as_millis();
                         if elapsed < 250 {
-                            debug_log!("Cmd+T DEBOUNCED - only {}ms since last, IGNORING", elapsed);
+                            debug_log!("Cmd+N DEBOUNCED - only {}ms since last, IGNORING", elapsed);
                             false
                         } else {
                             *last_time = Some(now);
                             true
                         }
                     } else {
-                        *last_time = Some(now);
-                        true
-                    }
-                };
-
-                if !should_execute {
-                } else {
-                    debug_log!("=== Cmd+T GlobalHotKey FIRED - creating new tab ===");
-                    let tab_count_before = tab_manager.borrow().get_tab_count();
-                    debug_log!("Tab count before: {}", tab_count_before);
-
-                    let welcome_html = ui::get_welcome_html();
-                    let tab_result = tab_manager.borrow_mut().create_tab_with_html(&window, &welcome_html);
-                    if let Ok(tab_id) = tab_result {
-                        debug_log!("Created tab with ID: {}", tab_id);
-                        tab_manager.borrow_mut().switch_to_tab(tab_id);
-                        if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
-                            let script = format!(
-                                "window.addTab({}, 'calm://welcome'); window.setActiveTab({}); window.updateUrlBar('');",
-                                tab_id,
-                                tab_id
-                            );
-                            let _ = webview.evaluate_script(&script);
-                            let focus_script = "document.getElementById('url-bar')?.focus();";
-                            let _ = webview.evaluate_script(focus_script);
-                        }
-                        let tab_count_after = tab_manager.borrow().get_tab_count();
-                        debug_log!("Tab count after: {}", tab_count_after);
-                    } else {
-                        debug_log!("ERROR: Failed to create tab");
-                    }
-                }
-            } else if hotkey_id == hotkey_close_tab.id() {
-                let now = Instant::now();
-                let should_execute = {
-                    let mut last_time = last_close_tab_time.borrow_mut();
-                    if let Some(last) = *last_time {
-                        let elapsed = now.duration_since(last).as_millis();
-                        if elapsed < 250 {
-                            debug_log!("=== Cmd+W DEBOUNCED - only {}ms since last, IGNORING ===", elapsed);
-                            false
-                        } else {
-                            debug_log!("=== Cmd+W allowed - {}ms since last ===", elapsed);
-                            *last_time = Some(now);
-                            true
-                        }
-                    } else {
-                        debug_log!("=== Cmd+W first press - executing ===");
                         *last_time = Some(now);
                         true
                     }
                 };
 
                 if should_execute {
-                    debug_log!("=== Cmd+W GlobalHotKey EXECUTING - closing ONE tab ===");
-
-                    let tab_count = tab_manager.borrow().get_tab_count();
-                    let active_tab_id = tab_manager.borrow().get_active_tab_id();
-
-                    debug_log!("Tab count before close: {}", tab_count);
-
-                    if tab_count <= 1 {
-                        debug_log!("Last tab - quitting application");
-                        *should_quit.borrow_mut() = true;
-                    } else {
-                        if let Some(active_tab_id) = active_tab_id {
-                            debug_log!("Closing ONLY tab ID: {}", active_tab_id);
-
-                            tab_manager.borrow_mut().close_tab(active_tab_id);
-
-                            if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
-                                let script = format!("window.removeTab({});", active_tab_id);
-                                let _ = webview.evaluate_script(&script);
-                            }
-
-                            let remaining = tab_manager.borrow().get_tab_count();
-                            debug_log!("Tab {} closed, remaining tabs: {}", active_tab_id, remaining);
-                        } else {
-                            debug_log!("ERROR: No active tab found");
+                    debug_log!("=== Cmd+N GlobalHotKey FIRED - creating new window ===");
+                    let default_url = convert_file_url(&config.borrow().default_url);
+                    match create_browser_window(
+                        event_loop_target,
+                        Rc::clone(&config),
+                        default_url,
+                        false,
+                    ) {
+                        Ok(new_window) => {
+                            let new_window_id = new_window.window.id();
+                            debug_log!("Created new window: {:?}", new_window_id);
+                            *focused_window_id.borrow_mut() = Some(new_window_id);
+                            windows_ref.borrow_mut().insert(new_window_id, new_window);
                         }
+                        Err(e) => {
+                            debug_log!("Failed to create new window: {:?}", e);
+                        }
+                    }
+                }
+            } else {
+                if let Some(focused_id) = *focused_window_id.borrow() {
+                    let windows = windows_ref.borrow();
+                    if let Some(components) = windows.get(&focused_id) {
+                        handle_hotkey(
+                            hotkey_id,
+                            &hotkey_reload,
+                            &hotkey_focus_url,
+                            &hotkey_toggle_downloads,
+                            &hotkey_focus_sidebar,
+                            &hotkey_find,
+                            &hotkey_new_tab,
+                            &hotkey_close_tab,
+                            &hotkey_split_view,
+                            components,
+                            &config,
+                            &last_new_tab_time,
+                            &last_close_tab_time,
+                            &last_toggle_downloads_time,
+                        );
                     }
                 }
             }
@@ -604,149 +279,423 @@ fn main() -> wry::Result<()> {
 
         match event {
             Event::WindowEvent {
+                window_id,
                 event: WindowEvent::CloseRequested,
                 ..
-            } => *control_flow = ControlFlow::Exit,
-            Event::WindowEvent {
-                event: WindowEvent::Resized(_),
-                ..
-            } | Event::WindowEvent {
-                event: WindowEvent::ScaleFactorChanged { .. },
-                ..
-            } | Event::WindowEvent {
-                event: WindowEvent::Moved(_),
-                ..
-            } | Event::WindowEvent {
-                event: WindowEvent::ThemeChanged(_),
-                ..
             } => {
-                let window_size = window.inner_size();
-                let tab_bar_bounds = wry::Rect {
-                    position: tao::dpi::LogicalPosition::new(0, 0).into(),
-                    size: tao::dpi::LogicalSize::new(TAB_SIDEBAR_WIDTH, window_size.height).into(),
-                };
-                let _ = tab_bar_webview.set_bounds(tab_bar_bounds);
-
-                let sidebar_x = (window_size.width as i32) - DOWNLOAD_SIDEBAR_WIDTH;
-                let sidebar_bounds = wry::Rect {
-                    position: tao::dpi::LogicalPosition::new(
-                        sidebar_x,
-                        0
-                    ).into(),
-                    size: tao::dpi::LogicalSize::new(DOWNLOAD_SIDEBAR_WIDTH as u32, window_size.height).into(),
-                };
-                let _ = download_overlay.set_bounds(sidebar_bounds);
-
-                let is_visible = *sidebar_visible.borrow();
-                if is_visible {
-                    tab_manager.borrow_mut().resize_all_tabs_with_sidebar(&window, DOWNLOAD_SIDEBAR_WIDTH as u32);
-                } else {
-                    tab_manager.borrow_mut().resize_all_tabs(&window);
+                debug_log!("Window close requested: {:?}", window_id);
+                windows_ref.borrow_mut().remove(&window_id);
+                if windows_ref.borrow().is_empty() {
+                    *control_flow = ControlFlow::Exit;
                 }
             }
             Event::WindowEvent {
+                window_id,
+                event: WindowEvent::Focused(focused),
+                ..
+            } => {
+                if focused {
+                    debug_log!("Window focused: {:?}", window_id);
+                    *focused_window_id.borrow_mut() = Some(window_id);
+                }
+            }
+            Event::WindowEvent {
+                window_id,
+                event: WindowEvent::Resized(new_size),
+                ..
+            } => {
+                debug_log!("Window resized: {}x{}", new_size.width, new_size.height);
+                let windows = windows_ref.borrow();
+                if let Some(components) = windows.get(&window_id) {
+                    handle_window_resize(components);
+                }
+            }
+            Event::WindowEvent {
+                window_id,
+                event: WindowEvent::ScaleFactorChanged { scale_factor, .. },
+                ..
+            } => {
+                debug_log!("Scale factor changed: {}", scale_factor);
+                let windows = windows_ref.borrow();
+                if let Some(components) = windows.get(&window_id) {
+                    handle_window_resize(components);
+                }
+            }
+            Event::WindowEvent {
+                window_id,
+                event: WindowEvent::Moved(position),
+                ..
+            } => {
+                debug_log!("Window moved to: {:?}", position);
+                let windows = windows_ref.borrow();
+                if let Some(components) = windows.get(&window_id) {
+                    handle_window_resize(components);
+                }
+            }
+            Event::WindowEvent {
+                window_id,
+                event: WindowEvent::ThemeChanged(theme),
+                ..
+            } => {
+                debug_log!("Theme changed: {:?}", theme);
+                let windows = windows_ref.borrow();
+                if let Some(components) = windows.get(&window_id) {
+                    handle_window_resize(components);
+                }
+            }
+            Event::WindowEvent {
+                window_id,
                 event: WindowEvent::ModifiersChanged(new_state),
                 ..
             } => {
                 *modifiers_state.borrow_mut() = new_state;
             }
             Event::WindowEvent {
+                window_id,
                 event: WindowEvent::KeyboardInput {
                     event: key_event,
                     ..
                 },
                 ..
             } => {
-                if key_event.state == ElementState::Pressed {
-                    let modifiers = *modifiers_state.borrow();
-
-                    debug_log!("Key pressed: {:?}, modifiers: ctrl={}, super={}, alt={}, shift={}",
-                        key_event.logical_key,
-                        modifiers.control_key(),
-                        modifiers.super_key(),
-                        modifiers.alt_key(),
-                        modifiers.shift_key()
-                    );
-
-                    // Cmd+T and Cmd+W are handled by GlobalHotKey (not KeyboardInput)
-                    // because KeyboardInput doesn't fire when webview has focus
-
-                    if key_event.logical_key == tao::keyboard::Key::Enter {
-                        debug_log!("Enter key - focusing selected tab");
-                        if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
-                            let script = "if (window.focusedTabIndex >= 0) { window.focusTab(window.focusedTabIndex); }";
-                            let _ = webview.evaluate_script(script);
-                        }
-                        return;
-                    }
-
-
-                    if !config.borrow().ui.vim_mode {
-                        debug_log!("Vim mode disabled, skipping");
-                        return;
-                    }
-
-                    let action_script = match &key_event.logical_key {
-                        tao::keyboard::Key::Character(c) => {
-                            let ch = c.to_string();
-                            let ch_lower = ch.to_lowercase();
-
-                            match ch_lower.as_str() {
-                                "j" => Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && !(window.calmIsSearchMode && window.calmIsSearchMode())) { window.scrollBy({top: 60, behavior: 'smooth'}); }"),
-                                "k" => Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && !(window.calmIsSearchMode && window.calmIsSearchMode())) { window.scrollBy({top: -60, behavior: 'smooth'}); }"),
-                                "h" => Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && !(window.calmIsSearchMode && window.calmIsSearchMode())) { window.scrollBy({left: -40, behavior: 'smooth'}); }"),
-                                "l" => Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && !(window.calmIsSearchMode && window.calmIsSearchMode())) { window.scrollBy({left: 40, behavior: 'smooth'}); }"),
-                                "g" => {
-                                    let is_uppercase = ch.chars().next().unwrap().is_uppercase();
-                                    if is_uppercase {
-                                        Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && !(window.calmIsSearchMode && window.calmIsSearchMode())) { window.scrollTo({top: document.documentElement.scrollHeight, behavior: 'smooth'}); }")
-                                    } else {
-                                        let mut last_time = last_g_key_time.borrow_mut();
-                                        let now = Instant::now();
-
-                                        if let Some(last) = *last_time {
-                                            if now.duration_since(last).as_millis() < 500 {
-                                                *last_time = None;
-                                                Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && !(window.calmIsSearchMode && window.calmIsSearchMode())) { window.scrollTo({top: 0, behavior: 'smooth'}); }")
-                                            } else {
-                                                *last_time = Some(now);
-                                                None
-                                            }
-                                        } else {
-                                            *last_time = Some(now);
-                                            None
-                                        }
-                                    }
-                                }
-                                "f" => {
-                                    let is_uppercase = ch.chars().next().unwrap().is_uppercase();
-                                    if is_uppercase {
-                                        Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && window.calmShowHints) { window.calmShowHints(true); }")
-                                    } else {
-                                        Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && window.calmShowHints) { window.calmShowHints(false); }")
-                                    }
-                                }
-                                "/" => Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && window.calmStartSearch) { window.calmStartSearch(); }"),
-                                _ => None
-                            }
-                        }
-                        _ => None
-                    };
-
-                    if let Some(script) = action_script {
-                        debug_log!("Executing script: {}", &script[..100.min(script.len())]);
-                        if let Some(active_webview) = tab_manager.borrow().get_active_tab_webview() {
-                            let result = active_webview.evaluate_script(script);
-                            debug_log!("Script result: {:?}", result);
-                        } else {
-                            debug_log!("No active webview found!");
-                        }
-                    } else {
-                        debug_log!("No action script for this key");
+                let windows = windows_ref.borrow();
+                if let Some(components) = windows.get(&window_id) {
+                    if key_event.state == ElementState::Pressed {
+                        handle_keyboard_input(
+                            key_event,
+                            components,
+                            &modifiers_state,
+                            &config,
+                            &last_g_key_time,
+                        );
                     }
                 }
             }
             _ => {}
         }
     });
+}
+
+/// Handles global hotkey events and dispatches them to appropriate actions.
+///
+/// # Arguments
+///
+/// * `hotkey_id` - The ID of the triggered hotkey
+/// * `hotkey_reload` - HotKey for page reload
+/// * `hotkey_focus_url` - HotKey for URL bar focus
+/// * `hotkey_toggle_downloads` - HotKey for downloads sidebar
+/// * `hotkey_focus_sidebar` - HotKey for sidebar focus
+/// * `hotkey_find` - HotKey for find/search
+/// * `hotkey_new_tab` - HotKey for new tab creation
+/// * `hotkey_close_tab` - HotKey for tab closing
+/// * `hotkey_split_view` - HotKey for split view toggle
+/// * `components` - Browser window components
+/// * `config` - Application configuration
+/// * `last_new_tab_time` - Timestamp of last new tab action for debouncing
+/// * `last_close_tab_time` - Timestamp of last close tab action for debouncing
+/// * `last_toggle_downloads_time` - Timestamp of last toggle downloads action for debouncing
+fn handle_hotkey(
+    hotkey_id: u32,
+    hotkey_reload: &HotKey,
+    hotkey_focus_url: &HotKey,
+    hotkey_toggle_downloads: &HotKey,
+    hotkey_focus_sidebar: &HotKey,
+    hotkey_find: &HotKey,
+    hotkey_new_tab: &HotKey,
+    hotkey_close_tab: &HotKey,
+    hotkey_split_view: &HotKey,
+    components: &BrowserWindowComponents,
+    config: &Rc<RefCell<Config>>,
+    last_new_tab_time: &Rc<RefCell<Option<Instant>>>,
+    last_close_tab_time: &Rc<RefCell<Option<Instant>>>,
+    last_toggle_downloads_time: &Rc<RefCell<Option<Instant>>>,
+) {
+    if hotkey_id == hotkey_reload.id() {
+        components.tab_manager.borrow().reload_active_tab();
+    } else if hotkey_id == hotkey_split_view.id() {
+        debug_log!("=== Cmd+Shift+S GlobalHotKey FIRED - toggling split view ===");
+        let toggled = components.tab_manager.borrow_mut().toggle_split_view(&components.window);
+        if toggled {
+            debug_log!("Split view enabled");
+        } else {
+            debug_log!("Split view disabled");
+        }
+        let enabled = components.tab_manager.borrow().is_split_view_enabled();
+        let script = format!("if (window.updateSplitViewButtons) {{ window.updateSplitViewButtons({}); }}", enabled);
+        let _ = components.tab_bar_webview.evaluate_script(&script);
+    } else if hotkey_id == hotkey_focus_url.id() {
+        let script = "const urlBar = document.getElementById('url-bar'); if (urlBar) { urlBar.focus(); urlBar.select(); }";
+        let _ = components.tab_bar_webview.evaluate_script(script);
+    } else if hotkey_id == hotkey_toggle_downloads.id() {
+        let now = Instant::now();
+        let should_execute = {
+            let mut last_time = last_toggle_downloads_time.borrow_mut();
+            if let Some(last) = *last_time {
+                let elapsed = now.duration_since(last).as_millis();
+                if elapsed < 250 {
+                    debug_log!("Cmd+J DEBOUNCED - only {}ms since last, IGNORING", elapsed);
+                    false
+                } else {
+                    *last_time = Some(now);
+                    true
+                }
+            } else {
+                *last_time = Some(now);
+                true
+            }
+        };
+
+        if should_execute {
+            debug_log!("=== Cmd+J GlobalHotKey FIRED - toggling downloads sidebar ===");
+            let mut is_visible = components.sidebar_visible.borrow_mut();
+            *is_visible = !*is_visible;
+
+            if *is_visible {
+                let _ = components.download_overlay.set_visible(true);
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                let script = "window.toggleVisibility(true);";
+                let _ = components.download_overlay.evaluate_script(script);
+                components.tab_manager.borrow_mut().resize_all_tabs_with_sidebar(
+                    &components.window,
+                    DOWNLOAD_SIDEBAR_WIDTH as u32,
+                );
+            } else {
+                let script = "window.toggleVisibility(false);";
+                let _ = components.download_overlay.evaluate_script(script);
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                let _ = components.download_overlay.set_visible(false);
+                components.tab_manager.borrow_mut().resize_all_tabs(&components.window);
+            }
+        }
+    } else if hotkey_id == hotkey_focus_sidebar.id() {
+        let _ = components.tab_bar_webview.focus();
+        let script = "window.showSidebarFocus(); if (window.tabs.length > 0) { if (window.focusedTabIndex < 0) { window.updateFocusedTab(0); } else { window.updateFocusedTab(window.focusedTabIndex); } }";
+        let _ = components.tab_bar_webview.evaluate_script(script);
+    } else if hotkey_id == hotkey_find.id() {
+        if let Some(active_webview) = components.tab_manager.borrow().get_active_tab_webview() {
+            let _ = active_webview.evaluate_script("window.calmStartSearch();");
+        }
+    } else if hotkey_id == hotkey_new_tab.id() {
+        let now = Instant::now();
+        let should_execute = {
+            let mut last_time = last_new_tab_time.borrow_mut();
+            if let Some(last) = *last_time {
+                let elapsed = now.duration_since(last).as_millis();
+                if elapsed < 250 {
+                    debug_log!("Cmd+T DEBOUNCED - only {}ms since last, IGNORING", elapsed);
+                    false
+                } else {
+                    *last_time = Some(now);
+                    true
+                }
+            } else {
+                *last_time = Some(now);
+                true
+            }
+        };
+
+        if should_execute {
+            debug_log!("=== Cmd+T GlobalHotKey FIRED - creating new tab ===");
+            let tab_count_before = components.tab_manager.borrow().get_tab_count();
+            debug_log!("Tab count before: {}", tab_count_before);
+
+            let default_url = convert_file_url(&config.borrow().default_url);
+            let tab_result = components.tab_manager.borrow_mut().create_tab(&components.window, &default_url);
+            if let Ok(tab_id) = tab_result {
+                debug_log!("Created tab with ID: {}", tab_id);
+                components.tab_manager.borrow_mut().switch_to_tab(tab_id);
+                let escaped_url = serde_json::to_string(&default_url).unwrap_or_else(|_| "\"\"".to_string());
+                let script = format!(
+                    "window.addTab({}, {}); window.setActiveTab({}); window.updateUrlBar({});",
+                    tab_id, escaped_url, tab_id, escaped_url
+                );
+                let _ = components.tab_bar_webview.evaluate_script(&script);
+                let focus_script = "document.getElementById('url-bar')?.focus();";
+                let _ = components.tab_bar_webview.evaluate_script(focus_script);
+                let tab_count_after = components.tab_manager.borrow().get_tab_count();
+                debug_log!("Tab count after: {}", tab_count_after);
+            } else {
+                debug_log!("ERROR: Failed to create tab");
+            }
+        }
+    } else if hotkey_id == hotkey_close_tab.id() {
+        let now = Instant::now();
+        let should_execute = {
+            let mut last_time = last_close_tab_time.borrow_mut();
+            if let Some(last) = *last_time {
+                let elapsed = now.duration_since(last).as_millis();
+                if elapsed < 250 {
+                    debug_log!("=== Cmd+W DEBOUNCED - only {}ms since last, IGNORING ===", elapsed);
+                    false
+                } else {
+                    debug_log!("=== Cmd+W allowed - {}ms since last ===", elapsed);
+                    *last_time = Some(now);
+                    true
+                }
+            } else {
+                debug_log!("=== Cmd+W first press - executing ===");
+                *last_time = Some(now);
+                true
+            }
+        };
+
+        if should_execute {
+            debug_log!("=== Cmd+W GlobalHotKey EXECUTING - closing ONE tab ===");
+
+            let tab_count = components.tab_manager.borrow().get_tab_count();
+            let active_tab_id = components.tab_manager.borrow().get_active_tab_id();
+
+            debug_log!("Tab count before close: {}", tab_count);
+
+            if tab_count <= 1 {
+                debug_log!("Last tab - closing window");
+                *components.should_quit.borrow_mut() = true;
+            } else {
+                if let Some(active_tab_id) = active_tab_id {
+                    debug_log!("Closing ONLY tab ID: {}", active_tab_id);
+
+                    components.tab_manager.borrow_mut().close_tab(active_tab_id);
+
+                    let script = format!("window.removeTab({});", active_tab_id);
+                    let _ = components.tab_bar_webview.evaluate_script(&script);
+
+                    let remaining = components.tab_manager.borrow().get_tab_count();
+                    debug_log!("Tab {} closed, remaining tabs: {}", active_tab_id, remaining);
+                } else {
+                    debug_log!("ERROR: No active tab found");
+                }
+            }
+        }
+    }
+}
+
+/// Handles window resize events by adjusting bounds of tab bar, download sidebar, and tab webviews.
+///
+/// # Arguments
+///
+/// * `components` - Browser window components to resize
+fn handle_window_resize(components: &BrowserWindowComponents) {
+    let window_size = components.window.inner_size();
+    let scale_factor = components.window.scale_factor();
+
+    debug_log!("Handling resize - size: {}x{}, scale: {}",
+               window_size.width, window_size.height, scale_factor);
+
+    let tab_bar_bounds = wry::Rect {
+        position: tao::dpi::LogicalPosition::new(0, 0).into(),
+        size: tao::dpi::LogicalSize::new(250, window_size.height).into(),
+    };
+    let _ = components.tab_bar_webview.set_bounds(tab_bar_bounds);
+
+    let sidebar_x = (window_size.width as i32) - DOWNLOAD_SIDEBAR_WIDTH;
+    let sidebar_bounds = wry::Rect {
+        position: tao::dpi::LogicalPosition::new(sidebar_x, 0).into(),
+        size: tao::dpi::LogicalSize::new(DOWNLOAD_SIDEBAR_WIDTH as u32, window_size.height).into(),
+    };
+    let _ = components.download_overlay.set_bounds(sidebar_bounds);
+
+    let is_visible = *components.sidebar_visible.borrow();
+    if is_visible {
+        components.tab_manager.borrow_mut().resize_all_tabs_with_sidebar(&components.window, DOWNLOAD_SIDEBAR_WIDTH as u32);
+    } else {
+        components.tab_manager.borrow_mut().resize_all_tabs(&components.window);
+    }
+}
+
+/// Handles keyboard input events for vim-style navigation and controls.
+///
+/// # Arguments
+///
+/// * `key_event` - The keyboard event
+/// * `components` - Browser window components
+/// * `modifiers_state` - Current state of modifier keys
+/// * `config` - Application configuration
+/// * `last_g_key_time` - Timestamp for 'gg' detection (double-g to scroll to top)
+fn handle_keyboard_input(
+    key_event: tao::event::KeyEvent,
+    components: &BrowserWindowComponents,
+    modifiers_state: &Rc<RefCell<ModifiersState>>,
+    config: &Rc<RefCell<Config>>,
+    last_g_key_time: &Rc<RefCell<Option<Instant>>>,
+) {
+    let modifiers = *modifiers_state.borrow();
+
+    debug_log!("Key pressed: {:?}, modifiers: ctrl={}, super={}, alt={}, shift={}",
+        key_event.logical_key,
+        modifiers.control_key(),
+        modifiers.super_key(),
+        modifiers.alt_key(),
+        modifiers.shift_key()
+    );
+
+    if key_event.logical_key == tao::keyboard::Key::Enter {
+        debug_log!("Enter key - focusing selected tab");
+        let script = "if (window.focusedTabIndex >= 0) { window.focusTab(window.focusedTabIndex); }";
+        let _ = components.tab_bar_webview.evaluate_script(script);
+        return;
+    }
+
+    if !config.borrow().ui.vim_mode {
+        debug_log!("Vim mode disabled, skipping");
+        return;
+    }
+
+    let action_script = match &key_event.logical_key {
+        tao::keyboard::Key::Character(c) => {
+            let ch = c.to_string();
+            let ch_lower = ch.to_lowercase();
+
+            match ch_lower.as_str() {
+                "j" => Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && !(window.calmIsSearchMode && window.calmIsSearchMode())) { window.scrollBy({top: 60, behavior: 'smooth'}); }"),
+                "k" => Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && !(window.calmIsSearchMode && window.calmIsSearchMode())) { window.scrollBy({top: -60, behavior: 'smooth'}); }"),
+                "h" => Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && !(window.calmIsSearchMode && window.calmIsSearchMode())) { window.scrollBy({left: -40, behavior: 'smooth'}); }"),
+                "l" => Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && !(window.calmIsSearchMode && window.calmIsSearchMode())) { window.scrollBy({left: 40, behavior: 'smooth'}); }"),
+                "g" => {
+                    let is_uppercase = ch.chars().next().unwrap().is_uppercase();
+                    if is_uppercase {
+                        Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && !(window.calmIsSearchMode && window.calmIsSearchMode())) { window.scrollTo({top: document.documentElement.scrollHeight, behavior: 'smooth'}); }")
+                    } else {
+                        let mut last_time = last_g_key_time.borrow_mut();
+                        let now = Instant::now();
+
+                        if let Some(last) = *last_time {
+                            if now.duration_since(last).as_millis() < 500 {
+                                *last_time = None;
+                                Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && !(window.calmIsSearchMode && window.calmIsSearchMode())) { window.scrollTo({top: 0, behavior: 'smooth'}); }")
+                            } else {
+                                *last_time = Some(now);
+                                None
+                            }
+                        } else {
+                            *last_time = Some(now);
+                            None
+                        }
+                    }
+                }
+                "f" => {
+                    let is_uppercase = ch.chars().next().unwrap().is_uppercase();
+                    if is_uppercase {
+                        Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && window.calmShowHints) { window.calmShowHints(true); }")
+                    } else {
+                        Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && window.calmShowHints) { window.calmShowHints(false); }")
+                    }
+                }
+                "/" => Some("if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT' && !document.activeElement.isContentEditable && !(window.calmGetHintMode && window.calmGetHintMode()) && window.calmStartSearch) { window.calmStartSearch(); }"),
+                _ => None
+            }
+        }
+        _ => None
+    };
+
+    if let Some(script) = action_script {
+        debug_log!("Executing script: {}", &script[..100.min(script.len())]);
+        if let Some(active_webview) = components.tab_manager.borrow().get_active_tab_webview() {
+            let result = active_webview.evaluate_script(script);
+            debug_log!("Script result: {:?}", result);
+        } else {
+            debug_log!("No active webview found!");
+        }
+    } else {
+        debug_log!("No action script for this key");
+    }
 }

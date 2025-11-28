@@ -33,9 +33,9 @@ pub fn get_tab_bar_styles() -> &'static str {
             border-right: 2px solid #ffffff;
             width: 250px;
             height: 100vh;
-            padding: 4px;
+            padding: 12px;
             padding-top: 50px;
-            padding-bottom: 44px;
+            padding-bottom: 52px;
             gap: 2px;
             user-select: none;
             -webkit-app-region: drag;
@@ -62,7 +62,7 @@ pub fn get_tab_bar_styles() -> &'static str {
             border-right: 2px solid #ffffff;
         }
 
-        .tab, .new-tab-btn, .reload-btn, .back-btn, .forward-btn, .downloads-btn, .close-tab {
+        .tab, .new-tab-btn, .reload-btn, .back-btn, .forward-btn, .downloads-btn, .close-tab, .split-view-btn, .split-orientation-btn, .swap-panes-btn {
             -webkit-app-region: no-drag;
         }
 
@@ -184,7 +184,7 @@ pub fn get_tab_bar_styles() -> &'static str {
         .control-group {
             position: fixed;
             top: 8px;
-            right: 4px;
+            right: 12px;
             display: flex;
             flex-direction: row;
             gap: 2px;
@@ -192,7 +192,7 @@ pub fn get_tab_bar_styles() -> &'static str {
             -webkit-app-region: no-drag;
         }
 
-        .new-tab-btn, .reload-btn, .back-btn, .forward-btn {
+        .new-tab-btn, .reload-btn, .back-btn, .forward-btn, .split-view-btn, .split-orientation-btn, .swap-panes-btn {
             width: 32px;
             height: 32px;
             background: #1a1a1a;
@@ -207,14 +207,19 @@ pub fn get_tab_bar_styles() -> &'static str {
             flex-shrink: 0;
         }
 
-        .new-tab-btn:hover, .reload-btn:hover, .back-btn:hover, .forward-btn:hover {
+        .new-tab-btn:hover, .reload-btn:hover, .back-btn:hover, .forward-btn:hover, .split-view-btn:hover, .split-orientation-btn:hover, .swap-panes-btn:hover {
             background: #ffffff;
             color: #000000;
         }
 
-        .new-tab-btn:active, .reload-btn:active, .back-btn:active, .forward-btn:active {
+        .new-tab-btn:active, .reload-btn:active, .back-btn:active, .forward-btn:active, .split-view-btn:active, .split-orientation-btn:active, .swap-panes-btn:active {
             background: #000000;
             color: #ffffff;
+        }
+
+        .split-view-btn.active {
+            background: #ffffff;
+            color: #000000;
         }
 
         .back-btn:disabled, .forward-btn:disabled {
@@ -240,6 +245,9 @@ pub fn get_tab_bar_styles() -> &'static str {
             transition: none;
             flex-shrink: 0;
             margin-bottom: 4px;
+            -webkit-app-region: no-drag;
+            user-select: text;
+            -webkit-user-select: text;
         }
 
         .url-bar:focus {
@@ -254,7 +262,7 @@ pub fn get_tab_bar_styles() -> &'static str {
             position: fixed;
             bottom: 12px;
             left: 12px;
-            width: 226px;
+            right: 24px;
             display: flex;
             flex-direction: row;
             gap: 8px;
@@ -273,7 +281,7 @@ pub fn get_tab_bar_styles() -> &'static str {
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 8px;
+            padding: 16px;
             flex-shrink: 0;
         }
 
