@@ -4,6 +4,7 @@ use crate::tabs::TabManager;
 use crate::ui;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Instant;
 use tao::{dpi::LogicalSize, event_loop::EventLoopWindowTarget, window::WindowBuilder};
 use wry::{Rect, WebView, WebViewBuilder};
 
@@ -21,6 +22,7 @@ pub struct BrowserWindowComponents {
     pub download_overlay: Rc<WebView>,
     pub sidebar_visible: Rc<RefCell<bool>>,
     pub should_quit: Rc<RefCell<bool>>,
+    pub last_toggle_downloads_time: Rc<RefCell<Option<Instant>>>,
 }
 
 /// Creates a new browser window with all necessary components including tab bar, download overlay, and initial tab.
@@ -70,6 +72,7 @@ pub fn create_browser_window<T>(
     let download_overlay_ref: Rc<RefCell<Option<Rc<WebView>>>> = Rc::new(RefCell::new(None));
     let sidebar_visible = Rc::new(RefCell::new(false));
     let should_quit = Rc::new(RefCell::new(false));
+    let last_toggle_downloads_time = Rc::new(RefCell::new(None::<Instant>));
 
     let window_size = window.inner_size();
 
@@ -89,6 +92,7 @@ pub fn create_browser_window<T>(
                 let sidebar_visible = Rc::clone(&sidebar_visible);
                 let config = Rc::clone(&config);
                 let should_quit = Rc::clone(&should_quit);
+                let last_toggle_downloads_time = Rc::clone(&last_toggle_downloads_time);
                 move |request| {
                     let body = request.body();
 
@@ -174,25 +178,46 @@ pub fn create_browser_window<T>(
                                 tab_manager.borrow().navigate_forward();
                             }
                             Some("toggle_downloads") => {
-                                let mut is_visible = sidebar_visible.borrow_mut();
-                                *is_visible = !*is_visible;
-
-                                if let Some(ref overlay) = *download_overlay_ref.borrow() {
-                                    if *is_visible {
-                                        let _ = overlay.set_visible(true);
-                                        std::thread::sleep(std::time::Duration::from_millis(10));
-                                        let script = "window.toggleVisibility(true);";
-                                        let _ = overlay.evaluate_script(script);
-                                        tab_manager.borrow_mut().resize_all_tabs_with_sidebar(
-                                            &window,
-                                            DOWNLOAD_SIDEBAR_WIDTH as u32,
-                                        );
+                                let now = Instant::now();
+                                let should_execute = {
+                                    let mut last_time = last_toggle_downloads_time.borrow_mut();
+                                    if let Some(last) = *last_time {
+                                        let elapsed = now.duration_since(last).as_millis();
+                                        if elapsed < 250 {
+                                            debug_log!("IPC toggle_downloads DEBOUNCED - only {}ms since last, IGNORING", elapsed);
+                                            false
+                                        } else {
+                                            *last_time = Some(now);
+                                            true
+                                        }
                                     } else {
-                                        let script = "window.toggleVisibility(false);";
-                                        let _ = overlay.evaluate_script(script);
-                                        std::thread::sleep(std::time::Duration::from_millis(300));
-                                        let _ = overlay.set_visible(false);
-                                        tab_manager.borrow_mut().resize_all_tabs(&window);
+                                        *last_time = Some(now);
+                                        true
+                                    }
+                                };
+
+                                if should_execute {
+                                    debug_log!("=== IPC toggle_downloads FIRED ===");
+                                    let mut is_visible = sidebar_visible.borrow_mut();
+                                    *is_visible = !*is_visible;
+
+                                    if let Some(ref overlay) = *download_overlay_ref.borrow() {
+                                        if *is_visible {
+                                            let _ = overlay.set_visible(true);
+                                            std::thread::sleep(std::time::Duration::from_millis(10));
+                                            let script = "window.toggleVisibility(true);";
+                                            let _ = overlay.evaluate_script(script);
+                                            tab_manager.borrow_mut().resize_all_tabs_with_sidebar(
+                                                &window,
+                                                DOWNLOAD_SIDEBAR_WIDTH as u32,
+                                            );
+                                        } else {
+                                            let script = "window.toggleVisibility(false);";
+                                            let _ = overlay.evaluate_script(script);
+                                            std::thread::sleep(std::time::Duration::from_millis(300));
+                                            let _ = overlay.set_visible(false);
+                                            tab_manager.borrow_mut().resize_all_tabs(&window);
+                                        }
                                     }
                                 }
                             }
@@ -430,6 +455,7 @@ pub fn create_browser_window<T>(
         download_overlay,
         sidebar_visible,
         should_quit,
+        last_toggle_downloads_time,
     })
 }
 

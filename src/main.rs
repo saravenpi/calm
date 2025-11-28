@@ -144,7 +144,6 @@ fn main() -> wry::Result<()> {
     let last_new_tab_time = Rc::new(RefCell::new(None::<Instant>));
     let last_close_tab_time = Rc::new(RefCell::new(None::<Instant>));
     let last_new_window_time = Rc::new(RefCell::new(None::<Instant>));
-    let last_toggle_downloads_time = Rc::new(RefCell::new(None::<Instant>));
     let modifiers_state = Rc::new(RefCell::new(ModifiersState::default()));
 
     let hotkey_manager = GlobalHotKeyManager::new().expect("Failed to create hotkey manager");
@@ -270,7 +269,6 @@ fn main() -> wry::Result<()> {
                             &config,
                             &last_new_tab_time,
                             &last_close_tab_time,
-                            &last_toggle_downloads_time,
                         );
                     }
                 }
@@ -393,7 +391,6 @@ fn main() -> wry::Result<()> {
 /// * `config` - Application configuration
 /// * `last_new_tab_time` - Timestamp of last new tab action for debouncing
 /// * `last_close_tab_time` - Timestamp of last close tab action for debouncing
-/// * `last_toggle_downloads_time` - Timestamp of last toggle downloads action for debouncing
 fn handle_hotkey(
     hotkey_id: u32,
     hotkey_reload: &HotKey,
@@ -408,7 +405,6 @@ fn handle_hotkey(
     config: &Rc<RefCell<Config>>,
     last_new_tab_time: &Rc<RefCell<Option<Instant>>>,
     last_close_tab_time: &Rc<RefCell<Option<Instant>>>,
-    last_toggle_downloads_time: &Rc<RefCell<Option<Instant>>>,
 ) {
     if hotkey_id == hotkey_reload.id() {
         components.tab_manager.borrow().reload_active_tab();
@@ -429,11 +425,11 @@ fn handle_hotkey(
     } else if hotkey_id == hotkey_toggle_downloads.id() {
         let now = Instant::now();
         let should_execute = {
-            let mut last_time = last_toggle_downloads_time.borrow_mut();
+            let mut last_time = components.last_toggle_downloads_time.borrow_mut();
             if let Some(last) = *last_time {
                 let elapsed = now.duration_since(last).as_millis();
                 if elapsed < 250 {
-                    debug_log!("Cmd+J DEBOUNCED - only {}ms since last, IGNORING", elapsed);
+                    debug_log!("Cmd+J GlobalHotkey DEBOUNCED - only {}ms since last, IGNORING", elapsed);
                     false
                 } else {
                     *last_time = Some(now);
