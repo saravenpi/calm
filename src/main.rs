@@ -154,6 +154,8 @@ fn main() -> wry::Result<()> {
                 &new_window_item,
                 &PredefinedMenuItem::separator(),
                 &close_tab_item,
+                &PredefinedMenuItem::separator(),
+                &PredefinedMenuItem::quit(None),
             ])
             .expect("Failed to append File menu items");
 

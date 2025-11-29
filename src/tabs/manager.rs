@@ -368,6 +368,7 @@ console.log('[INIT] Console override installed');
         const defaultUrlInput = document.getElementById('default-url');
         const searchEngineInput = document.getElementById('search-engine');
         const vimModeCheckbox = document.getElementById('vim-mode');
+        const uiSoundsCheckbox = document.getElementById('ui-sounds');
         const blockTrackersCheckbox = document.getElementById('block-trackers');
         const blockFingerprintingCheckbox = document.getElementById('block-fingerprinting');
 
@@ -376,6 +377,9 @@ console.log('[INIT] Console override installed');
             defaultUrlInput.value = {};
             searchEngineInput.value = {};
             vimModeCheckbox.checked = {};
+            if (uiSoundsCheckbox) {{
+                uiSoundsCheckbox.checked = {};
+            }}
             blockTrackersCheckbox.checked = {};
             blockFingerprintingCheckbox.checked = {};
             console.log('[SETTINGS-INIT] Settings populated successfully');
@@ -392,6 +396,7 @@ console.log('[INIT] Console override installed');
                     serde_json::to_string(&cfg.default_url).unwrap_or_else(|_| "\"\"".to_string()),
                     serde_json::to_string(&cfg.search_engine).unwrap_or_else(|_| "\"\"".to_string()),
                     cfg.ui.vim_mode,
+                    cfg.ui.sounds,
                     cfg.privacy.tracking_domain_blocking,
                     cfg.privacy.canvas_fingerprint_protection
                 );
