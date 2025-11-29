@@ -15,10 +15,13 @@ use wry::{Rect, WebViewBuilder};
 #[cfg(target_os = "macos")]
 use tao::platform::macos::WindowBuilderExtMacOS;
 
+#[allow(dead_code)]
 const TAB_SIDEBAR_WIDTH: u32 = 250;
+#[allow(dead_code)]
 const DOWNLOAD_SIDEBAR_WIDTH: i32 = 360;
 
 /// Manages multiple browser windows and their lifecycle.
+#[allow(dead_code)]
 pub struct WindowManager {
     windows: HashMap<WindowId, BrowserWindow>,
     window_id_map: HashMap<usize, WindowId>,
@@ -28,6 +31,7 @@ pub struct WindowManager {
     config: Rc<RefCell<Config>>,
 }
 
+#[allow(dead_code)]
 impl WindowManager {
     /// Creates a new window manager.
     pub fn new(config: Rc<RefCell<Config>>) -> Self {
@@ -100,14 +104,16 @@ impl WindowManager {
         window_id: WindowId,
         ipc_handler: Box<dyn Fn(wry::http::Request<String>) + 'static>,
     ) -> Result<(), String> {
-        let browser_window = self.windows.get(&window_id)
-            .ok_or("Window not found")?;
+        let browser_window = self.windows.get(&window_id).ok_or("Window not found")?;
 
         let window_size = browser_window.window.inner_size();
 
         let tab_bar_webview = Rc::new(
             WebViewBuilder::new()
-                .with_html(&ui::get_complete_tab_bar_html(self.config.borrow().ui.vim_mode))
+                .with_html(&ui::get_complete_tab_bar_html(
+                    self.config.borrow().ui.vim_mode,
+                    self.config.borrow().ui.sounds,
+                ))
                 .with_transparent(true)
                 .with_bounds(Rect {
                     position: LogicalPosition::new(0, 0).into(),
@@ -243,9 +249,11 @@ impl WindowManager {
     pub fn save_session(&self) -> Result<(), String> {
         let mut window_states = HashMap::new();
 
-        for (window_id, browser_window) in &self.windows {
+        for (_window_id, browser_window) in &self.windows {
             let position = {
-                let pos = browser_window.window.outer_position()
+                let pos = browser_window
+                    .window
+                    .outer_position()
                     .unwrap_or(tao::dpi::PhysicalPosition::new(0, 0));
                 let size = browser_window.window.inner_size();
                 WindowPosition {
@@ -263,10 +271,12 @@ impl WindowManager {
             window_states.insert(browser_window.window_id, (position, tabs, active_tab));
         }
 
-        let active_window_id = self.focused_window_id
+        let active_window_id = self
+            .focused_window_id
             .and_then(|id| self.windows.get(&id))
             .map(|w| w.window_id);
 
-        self.session_manager.save_window_state(&window_states, active_window_id)
+        self.session_manager
+            .save_window_state(&window_states, active_window_id)
     }
 }

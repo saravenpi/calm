@@ -1,5 +1,5 @@
-use url::Url;
 use crate::config::Config;
+use url::Url;
 
 /// List of known tracking parameter names to remove from URLs.
 const TRACKING_PARAMS: &[&str] = &[
@@ -72,14 +72,14 @@ const TRACKING_PARAMS: &[&str] = &[
 ];
 
 /// List of tracking parameter prefixes to match against.
-const TRACKING_PREFIXES: &[&str] = &[
-    "stm_",
-    "pk_",
-];
+const TRACKING_PREFIXES: &[&str] = &["stm_", "pk_"];
 
 /// Checks if a hostname is a YouTube domain.
 fn is_youtube_url(host: &str) -> bool {
-    matches!(host, "youtube.com" | "www.youtube.com" | "m.youtube.com" | "youtu.be")
+    matches!(
+        host,
+        "youtube.com" | "www.youtube.com" | "m.youtube.com" | "youtu.be"
+    )
 }
 
 /// Extracts YouTube video ID from a path given a prefix.
@@ -161,7 +161,10 @@ pub fn redirect_youtube_to_invidious(url_str: &str, config: &Config) -> String {
     if new_query.is_empty() {
         format!("https://{}{}", config.invidious_instance, new_path)
     } else {
-        format!("https://{}{}?{}", config.invidious_instance, new_path, new_query)
+        format!(
+            "https://{}{}?{}",
+            config.invidious_instance, new_path, new_query
+        )
     }
 }
 
@@ -182,7 +185,9 @@ pub fn clean_url(url_str: &str) -> Result<String, url::ParseError> {
         .filter_map(|(key, _)| {
             let key_str = key.as_ref();
             if TRACKING_PARAMS.contains(&key_str)
-                || TRACKING_PREFIXES.iter().any(|prefix| key_str.starts_with(prefix))
+                || TRACKING_PREFIXES
+                    .iter()
+                    .any(|prefix| key_str.starts_with(prefix))
             {
                 Some(key.into_owned())
             } else {

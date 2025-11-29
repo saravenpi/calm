@@ -47,10 +47,12 @@ pub struct WindowSessions {
 }
 
 /// Manages loading and saving window session state.
+#[allow(dead_code)]
 pub struct WindowSessionManager {
     session_file: PathBuf,
 }
 
+#[allow(dead_code)]
 impl WindowSessionManager {
     /// Creates a new session manager with default session file path.
     pub fn new() -> Self {
@@ -66,9 +68,7 @@ impl WindowSessionManager {
         }
 
         match fs::read_to_string(&self.session_file) {
-            Ok(content) => {
-                serde_yaml::from_str(&content).unwrap_or_default()
-            }
+            Ok(content) => serde_yaml::from_str(&content).unwrap_or_default(),
             Err(_) => WindowSessions::default(),
         }
     }
@@ -87,7 +87,9 @@ impl WindowSessionManager {
     /// Returns the position of the last saved window.
     pub fn get_last_window_position(&self) -> WindowPosition {
         let sessions = self.load();
-        sessions.windows.first()
+        sessions
+            .windows
+            .first()
             .map(|w| w.position.clone())
             .unwrap_or_default()
     }

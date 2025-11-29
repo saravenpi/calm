@@ -104,6 +104,12 @@ pub fn get_title_tracker_script() -> &'static str {
                 }
                 updateNavigationState();
                 originalBack.apply(this, arguments);
+                setTimeout(() => {
+                    updateTitleAndUrl();
+                }, 10);
+                setTimeout(() => {
+                    updateTitleAndUrl();
+                }, 100);
             };
 
             history.forward = function() {
@@ -112,6 +118,12 @@ pub fn get_title_tracker_script() -> &'static str {
                 }
                 updateNavigationState();
                 originalForward.apply(this, arguments);
+                setTimeout(() => {
+                    updateTitleAndUrl();
+                }, 10);
+                setTimeout(() => {
+                    updateTitleAndUrl();
+                }, 100);
             };
 
             const titleObserver = new MutationObserver(updateTitleAndUrl);

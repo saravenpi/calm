@@ -104,6 +104,7 @@ pub fn get_tab_bar_script() -> &'static str {
             closeBtn.textContent = '×';
             closeBtn.onclick = (event) => {
                 event.stopPropagation();
+                playUISound('delete');
                 closeTabWithAnimation(tabId);
             };
 
@@ -112,6 +113,7 @@ pub fn get_tab_bar_script() -> &'static str {
             tabEl.appendChild(closeBtn);
 
             tabEl.onclick = () => {
+                playUISound('cursorMove');
                 window.ipc.postMessage(JSON.stringify({action: 'switch_tab', tabId: tabId}));
                 window.hideSidebarFocus();
             };
@@ -387,5 +389,14 @@ pub fn get_tab_bar_script() -> &'static str {
                 if (swapPanesBtn) swapPanesBtn.style.display = 'none';
             }
         };
+
+        Object.defineProperty(window, 'ipcMessageToWindow', {
+            set: function(value) {
+                if (value && value.action && window.ipc) {
+                    window.ipc.postMessage(JSON.stringify(value));
+                }
+            },
+            configurable: true
+        });
     "#
 }

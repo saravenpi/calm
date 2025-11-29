@@ -1,15 +1,19 @@
+use super::split_view::SplitViewManager;
 use super::tab::Tab;
-use super::split_view::{SplitViewManager, SplitOrientation, SplitPane};
+use crate::config::Config;
+use crate::debug_log;
+use crate::downloads::DownloadManager;
 use crate::privacy;
 use crate::url_cleaner;
-use crate::config::Config;
 use crate::vimium_hints;
-use crate::debug_log;
 use std::collections::HashMap;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::fs;
-use tao::{dpi::{LogicalPosition, LogicalSize}, window::Window};
+use tao::{
+    dpi::{LogicalPosition, LogicalSize},
+    window::Window,
+};
 use wry::{Rect, WebView, WebViewBuilder};
 
 /// Maximum number of tabs that can be open simultaneously.
@@ -20,7 +24,7 @@ pub struct TabManager {
     tabs: HashMap<usize, Tab>,
     active_tab_id: Option<usize>,
     next_tab_id: usize,
-    next_download_id: Arc<Mutex<usize>>,
+    download_manager: DownloadManager,
     tab_sidebar_width: u32,
     tab_bar_webview: Option<std::rc::Rc<WebView>>,
     download_overlay: Option<std::rc::Rc<WebView>>,
@@ -31,74 +35,6 @@ pub struct TabManager {
 }
 
 /// Returns the path to the user's Downloads directory.
-fn get_downloads_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home).join("Downloads")
-}
-
-/// Attempts to extract filename from HTTP Content-Disposition header.
-fn get_filename_from_headers(url: &str) -> Option<String> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-        .ok()?;
-
-    let response = client.head(url).send().ok()?;
-
-    if let Some(content_disposition) = response.headers().get(reqwest::header::CONTENT_DISPOSITION) {
-        if let Ok(value) = content_disposition.to_str() {
-            let parsed = content_disposition::parse_content_disposition(value);
-            if let Some(filename) = parsed.filename_full() {
-                let sanitized = filename
-                    .chars()
-                    .map(|c| {
-                        let invalid_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
-                        if invalid_chars.contains(&c) { '_' } else { c }
-                    })
-                    .collect::<String>();
-
-                if !sanitized.is_empty() {
-                    return Some(sanitized);
-                }
-            }
-        }
-    }
-
-    None
-}
-
-/// Extracts and sanitizes a filename from a URL, removing invalid characters.
-fn sanitize_filename(url: &str) -> String {
-    let path_part = url.split('?').next().unwrap_or(url);
-    let path_part = path_part.split('#').next().unwrap_or(path_part);
-
-    let mut filename = path_part
-        .split('/')
-        .last()
-        .unwrap_or("download")
-        .to_string();
-
-    filename = urlencoding::decode(&filename)
-        .unwrap_or_else(|_| filename.clone().into())
-        .to_string();
-
-    if filename.is_empty() || filename == "/" || filename == "download" {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        filename = format!("download_{}", timestamp);
-    }
-
-    let invalid_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
-    filename = filename.chars()
-        .map(|c| if invalid_chars.contains(&c) { '_' } else { c })
-        .collect();
-
-    filename
-}
-
 /// Adds file extension to a file by detecting its type from content if extension is missing.
 fn add_extension_if_needed(path: &PathBuf) -> PathBuf {
     if path.extension().is_some() {
@@ -128,7 +64,7 @@ impl TabManager {
             tabs: HashMap::new(),
             active_tab_id: None,
             next_tab_id: 1,
-            next_download_id: Arc::new(Mutex::new(1)),
+            download_manager: DownloadManager::new(),
             tab_sidebar_width,
             tab_bar_webview: None,
             download_overlay: None,
@@ -157,13 +93,26 @@ impl TabManager {
 
     /// Creates a new tab with custom HTML content.
     /// Returns the tab ID on success.
-    pub fn create_tab_with_html(&mut self, window: &Window, html: &str) -> Result<usize, wry::Error> {
+    pub fn create_tab_with_html(
+        &mut self,
+        window: &Window,
+        html: &str,
+    ) -> Result<usize, wry::Error> {
         self.create_tab_internal(window, "about:blank", Some(html))
     }
 
     /// Internal method to create a tab with URL or HTML content.
-    fn create_tab_internal(&mut self, window: &Window, url: &str, html: Option<&str>) -> Result<usize, wry::Error> {
-        debug_log!("create_tab_internal called - url: {}, has_html: {}", url, html.is_some());
+    fn create_tab_internal(
+        &mut self,
+        window: &Window,
+        url: &str,
+        html: Option<&str>,
+    ) -> Result<usize, wry::Error> {
+        debug_log!(
+            "create_tab_internal called - url: {}, has_html: {}",
+            url,
+            html.is_some()
+        );
 
         if self.tabs.len() >= MAX_TABS {
             debug_log!("Max tabs reached ({}), not creating new tab", MAX_TABS);
@@ -183,17 +132,23 @@ impl TabManager {
         };
 
         let redirected_url = url_cleaner::redirect_youtube_to_invidious(url, &self.config.borrow());
-        let cleaned_url = url_cleaner::clean_url(&redirected_url).unwrap_or_else(|_| redirected_url.to_string());
+        let cleaned_url =
+            url_cleaner::clean_url(&redirected_url).unwrap_or_else(|_| redirected_url.to_string());
 
-        let download_id_counter = Arc::clone(&self.next_download_id);
+        let download_id_counter = self.download_manager.get_download_id_counter();
+        let download_history = self.download_manager.get_history();
+        let download_history_started = Arc::clone(&download_history);
+        let download_history_completed = Arc::clone(&download_history);
         let current_download_id = Arc::new(Mutex::new(0usize));
         let download_id_started = Arc::clone(&current_download_id);
         let download_id_completed = Arc::clone(&current_download_id);
+        let download_id_progress = Arc::clone(&current_download_id);
         let download_path_store = Arc::new(Mutex::new(PathBuf::new()));
         let download_path_started = Arc::clone(&download_path_store);
         let download_path_completed = Arc::clone(&download_path_store);
         let download_overlay_started = self.download_overlay.clone();
         let download_overlay_completed = self.download_overlay.clone();
+        let download_overlay_progress = self.download_overlay.clone();
         let tab_bar_for_ipc = self.tab_bar_webview.clone();
         let current_urls_for_ipc = Arc::clone(&self.current_urls);
         let tab_id_for_ipc = tab_id;
@@ -442,38 +397,45 @@ console.log('[INIT] Console override installed');
                 );
                 drop(cfg);
 
-                let combined_script = format!("{}\n{}\n{}\n{}\n{}", console_override, link_interception, safe_privacy_script, vimium_script, settings_init_script);
-                debug_log!("Initialization script size: {} bytes (console: ~600, privacy: ~{}, vimium: {})",
+                let keyboard_handler = crate::ui::get_keyboard_handler_script();
+                let combined_script = format!("{}\n{}\n{}\n{}\n{}\n{}", console_override, link_interception, safe_privacy_script, vimium_script, settings_init_script, keyboard_handler);
+                debug_log!("Initialization script size: {} bytes (console: ~600, privacy: ~{}, vimium: {}, keyboard: {})",
                     combined_script.len(),
                     safe_privacy_script.len(),
-                    vimium_script.len()
+                    vimium_script.len(),
+                    keyboard_handler.len()
                 );
 
                 combined_script
             })
-            .with_download_started_handler(move |url, path| {
+            .with_download_started_handler(move |_url, path| {
+                let filename = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("download")
+                    .to_string();
+
+                let path_str = path.to_string_lossy().to_string();
+
                 let download_id = {
-                    let mut id = download_id_counter.lock().unwrap();
-                    let current_id = *id;
-                    *id += 1;
-                    current_id
+                    let mut history = download_history_started.lock().unwrap();
+                    let id = history.add_download(filename.clone(), path_str.clone(), 0);
+
+                    let mut id_counter = download_id_counter.lock().unwrap();
+                    *id_counter = history.next_id;
+
+                    id
                 };
 
-                let filename = get_filename_from_headers(&url)
-                    .unwrap_or_else(|| sanitize_filename(&url));
-                let download_path = get_downloads_dir().join(&filename);
-                *path = download_path.clone();
-
                 *download_id_started.lock().unwrap() = download_id;
-                *download_path_started.lock().unwrap() = download_path.clone();
+                *download_path_started.lock().unwrap() = path.clone();
 
                 if let Some(ref webview) = download_overlay_started {
-                    let _ = webview.set_visible(true);
-
                     let script = format!(
-                        "if (window.addDownload) {{ window.addDownload({}, {}, 0); }}",
+                        "if (window.addDownload) {{ window.addDownload({}, {}, 0, {}); }}",
                         download_id,
-                        serde_json::to_string(&filename).unwrap_or_else(|_| "\"download\"".to_string())
+                        serde_json::to_string(&filename).unwrap_or_else(|_| "\"download\"".to_string()),
+                        serde_json::to_string(&path_str).unwrap_or_else(|_| "\"\"".to_string())
                     );
                     let _ = webview.evaluate_script(&script);
                 }
@@ -500,6 +462,9 @@ console.log('[INIT] Console override installed');
                 };
 
                 if download_id > 0 {
+                    let mut history = download_history_completed.lock().unwrap();
+                    history.update_download(download_id, success, !success, Some(final_filename.clone()));
+
                     if let Some(ref webview) = download_overlay_completed {
                         let script = if success {
                             format!(
@@ -513,6 +478,21 @@ console.log('[INIT] Console override installed');
                                 download_id
                             )
                         };
+                        let _ = webview.evaluate_script(&script);
+                    }
+                }
+            })
+            .with_download_progress_handler(move |_url, downloaded_bytes, total_bytes| {
+                let download_id = *download_id_progress.lock().unwrap();
+
+                if download_id > 0 {
+                    if let Some(ref webview) = download_overlay_progress {
+                        let script = format!(
+                            "if (window.updateDownloadProgress) {{ window.updateDownloadProgress({}, {}, {}); }}",
+                            download_id,
+                            downloaded_bytes,
+                            total_bytes
+                        );
                         let _ = webview.evaluate_script(&script);
                     }
                 }
@@ -616,6 +596,10 @@ console.log('[INIT] Console override installed');
                                     debug_log!("Setting vim_mode to: {}", vim_mode);
                                     cfg.ui.vim_mode = vim_mode;
                                 }
+                                if let Some(ui_sounds) = settings.get("uiSounds").and_then(|v| v.as_bool()) {
+                                    debug_log!("Setting ui_sounds to: {}", ui_sounds);
+                                    cfg.ui.sounds = ui_sounds;
+                                }
                                 if let Some(block_trackers) = settings.get("blockTrackers").and_then(|v| v.as_bool()) {
                                     debug_log!("Setting block_trackers to: {}", block_trackers);
                                     cfg.privacy.tracking_domain_blocking = block_trackers;
@@ -631,8 +615,42 @@ console.log('[INIT] Console override installed');
                                     Ok(_) => debug_log!("Settings saved successfully to ~/.calm.yml from tab"),
                                     Err(e) => debug_log!("ERROR: Failed to save settings from tab: {:?}", e),
                                 }
+
+                                if let Some(ui_sounds) = settings.get("uiSounds").and_then(|v| v.as_bool()) {
+                                    let script = if ui_sounds {
+                                        "window.uiSoundsEnabled = true;"
+                                    } else {
+                                        "window.uiSoundsEnabled = false; window.playUISound = function() {};"
+                                    };
+                                    if let Some(ref webview) = tab_bar_for_ipc {
+                                        let _ = webview.evaluate_script(script);
+                                        debug_log!("Updated UI sounds setting in tab bar to: {}", ui_sounds);
+                                    }
+                                }
                             } else {
                                 debug_log!("ERROR: No settings object in save_settings message from tab");
+                            }
+                        }
+                        Some("inspect_element") => {
+                            debug_log!("Forwarding inspect_element request for tab {} to window", tab_id_for_ipc);
+                            if let Some(ref webview) = tab_bar_for_ipc {
+                                let script = format!(
+                                    "window.ipcMessageToWindow = {{ action: 'inspect_element_tab', tabId: {} }};",
+                                    tab_id_for_ipc
+                                );
+                                let _ = webview.evaluate_script(&script);
+                            }
+                        }
+                        Some("keyboard_shortcut") => {
+                            if let Some(shortcut) = data["shortcut"].as_str() {
+                                debug_log!("Forwarding keyboard shortcut '{}' from tab {} to window", shortcut, tab_id_for_ipc);
+                                if let Some(ref webview) = tab_bar_for_ipc {
+                                    let script = format!(
+                                        "window.ipc.postMessage(JSON.stringify({{ action: 'keyboard_shortcut', shortcut: '{}' }}));",
+                                        shortcut
+                                    );
+                                    let _ = webview.evaluate_script(&script);
+                                }
                             }
                         }
                         _ => {}
@@ -681,15 +699,17 @@ console.log('[INIT] Console override installed');
 
             if let Some(ref webview) = self.tab_bar_webview {
                 let url = if let Ok(urls) = self.current_urls.lock() {
-                    urls.get(&tab_id).cloned().unwrap_or_else(|| new_tab.get_url().to_string())
+                    urls.get(&tab_id)
+                        .cloned()
+                        .unwrap_or_else(|| new_tab.get_url().to_string())
                 } else {
                     new_tab.get_url().to_string()
                 };
-                let escaped_url = serde_json::to_string(&url).unwrap_or_else(|_| "\"\"".to_string());
+                let escaped_url =
+                    serde_json::to_string(&url).unwrap_or_else(|_| "\"\"".to_string());
                 let script = format!(
                     "window.setActiveTab({}); window.updateUrlBar({});",
-                    tab_id,
-                    escaped_url
+                    tab_id, escaped_url
                 );
                 let _ = webview.evaluate_script(&script);
             }
@@ -764,13 +784,54 @@ console.log('[INIT] Console override installed');
         }
     }
 
+    /// Opens developer tools for the active tab.
+    pub fn open_devtools_for_active_tab(&mut self, window: &Window) {
+        if let Some(tab_id) = self.active_tab_id {
+            self.open_devtools_for_tab(tab_id, window);
+        }
+    }
+
+    /// Opens developer tools for a specific tab by ID.
+    pub fn open_devtools_for_tab(&mut self, tab_id: usize, window: &Window) {
+        if let Some(tab) = self.tabs.get(&tab_id) {
+            let window_size = window.inner_size();
+
+            if let Some(ref tab_bar) = self.tab_bar_webview {
+                let tab_bar_bounds = wry::Rect {
+                    position: LogicalPosition::new(0, 0).into(),
+                    size: LogicalSize::new(self.tab_sidebar_width, window_size.height).into(),
+                };
+                let _ = tab_bar.set_bounds(tab_bar_bounds);
+                let _ = tab_bar.set_visible(true);
+            }
+
+            tab.webview.open_devtools();
+
+            std::thread::sleep(std::time::Duration::from_millis(50));
+
+            let content_width = window_size.width.saturating_sub(self.tab_sidebar_width);
+            let tab_bounds = wry::Rect {
+                position: LogicalPosition::new(self.tab_sidebar_width as i32, 0).into(),
+                size: LogicalSize::new(content_width, window_size.height).into(),
+            };
+            let _ = tab.webview.set_bounds(tab_bounds);
+
+            if let Some(ref tab_bar) = self.tab_bar_webview {
+                let _ = tab_bar.set_visible(true);
+            }
+        }
+    }
+
     /// Navigates the specified tab to a new URL.
     pub fn navigate_to(&mut self, tab_id: usize, url: &str) {
         if let Some(tab) = self.tabs.get_mut(&tab_id) {
-            let redirected_url = url_cleaner::redirect_youtube_to_invidious(url, &self.config.borrow());
-            let cleaned_url = url_cleaner::clean_url(&redirected_url).unwrap_or_else(|_| redirected_url.to_string());
+            let redirected_url =
+                url_cleaner::redirect_youtube_to_invidious(url, &self.config.borrow());
+            let cleaned_url = url_cleaner::clean_url(&redirected_url)
+                .unwrap_or_else(|_| redirected_url.to_string());
             tab.set_url(cleaned_url.clone());
-            let escaped_url = serde_json::to_string(&cleaned_url).unwrap_or_else(|_| "\"\"".to_string());
+            let escaped_url =
+                serde_json::to_string(&cleaned_url).unwrap_or_else(|_| "\"\"".to_string());
             let script = format!("window.location.href = {};", escaped_url);
             let _ = tab.webview.evaluate_script(&script);
 
@@ -793,7 +854,8 @@ console.log('[INIT] Console override installed');
 
     /// Returns a reference to the active tab's webview if there is one.
     pub fn get_active_tab_webview(&self) -> Option<&wry::WebView> {
-        self.active_tab_id.and_then(|id| self.tabs.get(&id).map(|tab| &tab.webview))
+        self.active_tab_id
+            .and_then(|id| self.tabs.get(&id).map(|tab| &tab.webview))
     }
 
     /// Resizes all tabs to fit the current window size.
@@ -821,7 +883,10 @@ console.log('[INIT] Console override installed');
             self.update_split_view_layout(window, Some(download_sidebar_width));
         } else {
             let window_size = window.inner_size();
-            let content_width = window_size.width.saturating_sub(self.tab_sidebar_width).saturating_sub(download_sidebar_width);
+            let content_width = window_size
+                .width
+                .saturating_sub(self.tab_sidebar_width)
+                .saturating_sub(download_sidebar_width);
 
             let bounds = Rect {
                 position: LogicalPosition::new(self.tab_sidebar_width as i32, 0).into(),
@@ -837,7 +902,9 @@ console.log('[INIT] Console override installed');
     /// Toggles split view mode on/off and returns whether it was enabled.
     pub fn toggle_split_view(&mut self, window: &Window) -> bool {
         let tab_ids: Vec<usize> = self.tabs.keys().copied().collect();
-        let toggled = self.split_view.toggle_split_view(self.active_tab_id, &tab_ids);
+        let toggled = self
+            .split_view
+            .toggle_split_view(self.active_tab_id, &tab_ids);
 
         if toggled {
             self.update_split_view_layout(window, None);
@@ -868,16 +935,6 @@ console.log('[INIT] Console override installed');
         }
     }
 
-    /// Sets which pane is active in split view mode.
-    pub fn set_split_active_pane(&mut self, pane: SplitPane) {
-        if self.split_view.state().enabled {
-            self.split_view.state_mut().set_active_pane(pane);
-            if let Some(tab_id) = self.split_view.state().get_active_tab_id() {
-                self.active_tab_id = Some(tab_id);
-            }
-        }
-    }
-
     /// Updates the layout and bounds of split view panes.
     fn update_split_view_layout(&mut self, window: &Window, download_sidebar_width: Option<u32>) {
         let state = self.split_view.state();
@@ -886,11 +943,8 @@ console.log('[INIT] Console override installed');
             return;
         }
 
-        let (primary_bounds, secondary_bounds) = state.calculate_bounds(
-            window,
-            self.tab_sidebar_width,
-            download_sidebar_width,
-        );
+        let (primary_bounds, secondary_bounds) =
+            state.calculate_bounds(window, self.tab_sidebar_width, download_sidebar_width);
 
         for (tab_id, tab) in &self.tabs {
             if state.primary_tab_id == Some(*tab_id) {
@@ -905,14 +959,11 @@ console.log('[INIT] Console override installed');
         }
     }
 
-    /// Returns the current split view state with primary tab, secondary tab, and orientation.
-    pub fn get_split_view_state(&self) -> Option<(usize, usize, SplitOrientation)> {
-        let state = self.split_view.state();
-        if state.enabled {
-            if let (Some(primary), Some(secondary)) = (state.primary_tab_id, state.secondary_tab_id) {
-                return Some((primary, secondary, state.orientation));
-            }
-        }
-        None
+    pub fn get_download_history(&self) -> crate::downloads::DownloadHistory {
+        self.download_manager.get_history().lock().unwrap().clone()
+    }
+
+    pub fn clear_download_history(&mut self) {
+        self.download_manager.get_history().lock().unwrap().clear();
     }
 }

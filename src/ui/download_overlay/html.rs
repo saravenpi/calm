@@ -6,6 +6,9 @@ pub fn get_html() -> &'static str {
                 <div class="downloads-empty" id="downloads-empty">No active downloads</div>
                 <div class="downloads-list" id="downloads-list"></div>
             </div>
+            <div class="downloads-footer">
+                <button class="clear-history-btn" onclick="clearDownloadHistory()" title="Clear Download History">Clear History</button>
+            </div>
         </div>
     "#
 }

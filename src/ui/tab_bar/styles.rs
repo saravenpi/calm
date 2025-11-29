@@ -1,21 +1,20 @@
-pub fn get_tab_bar_styles() -> &'static str {
-    r#"
-        @font-face {
-            font-family: 'gohu';
-            src: url('data:application/font-woff2;charset=utf-8;base64,d09GMgABAAAAABEYAA4AAAAAJKAAABDEAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGhYbHhyBbAZgAIEICghWCYM8EQwKgdRgg7hzC4NAAAE2AiQDhx4EIAWDAAeFPQyBZxu8IqOQHkO2HySh4MbHmL/M3v+TQLAbdqUBAhsOACi1kcDKiixZqgMYVqyqKju0e3//b7Pb1SIRqC5SN6ErCDmT0DSReCdh0kgkn2Dz/P//n3m/+cXsO7PvzO07c+/M3DszJJKS5kkk0kmkk0gkkdwk0kmke+/eJvfuPQe9e5vce/emL7lJokTy3ntPIin33ntP7r33nvz/f5tdYKuqKqmqomor87+ft3e21N7ZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9s2afbNm36zZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9s2afbNm36zZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9s2afbNm36zZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9v0HAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') format('woff2');
-            font-weight: normal;
-            font-style: normal;
-        }
+use crate::ui::fonts;
 
-        * {
+pub fn get_tab_bar_styles() -> String {
+    format!(
+        r#"
+        {}
+
+
+        * {{
             margin: 0;
             padding: 0;
             box-sizing: border-box;
             image-rendering: pixelated;
             image-rendering: crisp-edges;
-        }
+        }}
 
-        body {
+        body {{
             font-family: 'gohu', monospace;
             overflow: hidden;
             background: transparent;
@@ -23,18 +22,30 @@ pub fn get_tab_bar_styles() -> &'static str {
             width: 250px;
             height: 100vh;
             font-size: 11px;
-        }
+            position: relative;
+        }}
 
-        #tab-bar {
+        body::after {{
+            content: '';
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 2px;
+            height: 100vh;
+            background: #ffffff;
+            z-index: 200;
+            pointer-events: none;
+        }}
+
+        #tab-bar {{
             display: flex;
             flex-direction: column;
             align-items: stretch;
             background: #000000;
-            border-right: 2px solid #ffffff;
             width: 250px;
             height: 100vh;
             padding: 12px;
-            padding-top: 50px;
+            padding-top: 84px;
             padding-bottom: 52px;
             gap: 2px;
             user-select: none;
@@ -42,31 +53,30 @@ pub fn get_tab_bar_styles() -> &'static str {
             overflow-y: auto;
             overflow-x: hidden;
             transition: border-color 0.15s ease;
-        }
+        }}
 
-        #tab-bar.sidebar-focused {
+        #tab-bar.sidebar-focused {{
             border-right: 2px solid #ffffff;
-        }
+        }}
 
-        body::before {
+        body::before {{
             content: '';
             position: fixed;
             top: 0;
             left: 0;
             width: 250px;
-            height: 50px;
+            height: 84px;
             -webkit-app-region: drag;
             pointer-events: none;
             z-index: 100;
             background: #000000;
-            border-right: 2px solid #ffffff;
-        }
+        }}
 
-        .tab, .new-tab-btn, .reload-btn, .back-btn, .forward-btn, .downloads-btn, .close-tab, .split-view-btn, .split-orientation-btn, .swap-panes-btn {
+        .tab, .new-tab-btn, .reload-btn, .back-btn, .forward-btn, .downloads-btn, .close-tab, .split-view-btn, .split-orientation-btn, .swap-panes-btn {{
             -webkit-app-region: no-drag;
-        }
+        }}
 
-        .tab {
+        .tab {{
             display: flex;
             align-items: center;
             gap: 4px;
@@ -80,87 +90,87 @@ pub fn get_tab_bar_styles() -> &'static str {
             overflow: hidden;
             min-height: 32px;
             flex-shrink: 0;
-        }
+        }}
 
-        .tab:hover {
+        .tab:hover {{
             background: #333333;
-        }
+        }}
 
-        .tab.active {
+        .tab.active {{
             background: #ffffff;
             color: #000000;
-        }
+        }}
 
-        .tab.focused {
+        .tab.focused {{
             background: #ffffff;
             color: #000000;
-        }
+        }}
 
-        .tab.closing {
+        .tab.closing {{
             animation: tabClose 0.25s ease-out forwards;
-        }
+        }}
 
-        @keyframes tabClose {
-            0% {
+        @keyframes tabClose {{
+            0% {{
                 opacity: 1;
                 max-height: 32px;
                 padding: 8px;
                 margin-bottom: 2px;
                 border-width: 1px;
-            }
-            50% {
+            }}
+            50% {{
                 opacity: 0;
                 max-height: 32px;
                 padding: 8px 0;
                 margin-bottom: 2px;
                 border-width: 1px;
-            }
-            100% {
+            }}
+            100% {{
                 opacity: 0;
                 max-height: 0;
                 padding: 0;
                 margin-bottom: 0;
                 border-width: 0;
-            }
-        }
+            }}
+        }}
 
-        .tab.opening {
+        .tab.opening {{
             animation: tabOpen 0.2s linear;
-        }
+        }}
 
-        @keyframes tabOpen {
-            0% {
+        @keyframes tabOpen {{
+            0% {{
                 opacity: 0;
-            }
-            100% {
+            }}
+            100% {{
                 opacity: 1;
-            }
-        }
+            }}
+        }}
 
-        .tab-title {
+        .tab-title {{
             flex: 1;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
             font-size: 11px;
-        }
+        }}
 
-        .tab.active .tab-title {
+        .tab.active .tab-title {{
             font-weight: bold;
-        }
+        }}
 
-        .tab-audio-indicator {
+        .tab-audio-indicator {{
             width: 8px;
             height: 8px;
             display: none;
             border: 1px solid currentColor;
-        }
+        }}
 
-        .tab-audio-indicator.playing {
+        .tab-audio-indicator.playing {{
             display: block;
-        }
+        }}
 
-        .tab-close {
+        .tab-close {{
             width: 12px;
             height: 12px;
             display: flex;
@@ -169,19 +179,19 @@ pub fn get_tab_bar_styles() -> &'static str {
             font-size: 16px;
             line-height: 1;
             transition: none;
-        }
+        }}
 
-        .tab-close:hover {
+        .tab-close:hover {{
             background: #ffffff;
             color: #000000;
-        }
+        }}
 
-        .tab.active .tab-close:hover {
+        .tab.active .tab-close:hover {{
             background: #000000;
             color: #ffffff;
-        }
+        }}
 
-        .control-group {
+        .control-group {{
             position: fixed;
             top: 8px;
             right: 12px;
@@ -190,9 +200,9 @@ pub fn get_tab_bar_styles() -> &'static str {
             gap: 2px;
             z-index: 101;
             -webkit-app-region: no-drag;
-        }
+        }}
 
-        .new-tab-btn, .reload-btn, .back-btn, .forward-btn, .split-view-btn, .split-orientation-btn, .swap-panes-btn {
+        .new-tab-btn, .reload-btn, .back-btn, .forward-btn, .split-view-btn, .split-orientation-btn, .swap-panes-btn {{
             width: 32px;
             height: 32px;
             background: #1a1a1a;
@@ -205,34 +215,34 @@ pub fn get_tab_bar_styles() -> &'static str {
             justify-content: center;
             padding: 0;
             flex-shrink: 0;
-        }
+        }}
 
-        .new-tab-btn:hover, .reload-btn:hover, .back-btn:hover, .forward-btn:hover, .split-view-btn:hover, .split-orientation-btn:hover, .swap-panes-btn:hover {
+        .new-tab-btn:hover, .reload-btn:hover, .back-btn:hover, .forward-btn:hover, .split-view-btn:hover, .split-orientation-btn:hover, .swap-panes-btn:hover {{
             background: #ffffff;
             color: #000000;
-        }
+        }}
 
-        .new-tab-btn:active, .reload-btn:active, .back-btn:active, .forward-btn:active, .split-view-btn:active, .split-orientation-btn:active, .swap-panes-btn:active {
+        .new-tab-btn:active, .reload-btn:active, .back-btn:active, .forward-btn:active, .split-view-btn:active, .split-orientation-btn:active, .swap-panes-btn:active {{
             background: #000000;
             color: #ffffff;
-        }
+        }}
 
-        .split-view-btn.active {
+        .split-view-btn.active {{
             background: #ffffff;
             color: #000000;
-        }
+        }}
 
-        .back-btn:disabled, .forward-btn:disabled {
+        .back-btn:disabled, .forward-btn:disabled {{
             opacity: 0.3;
             cursor: not-allowed;
-        }
+        }}
 
-        .back-btn:disabled:hover, .forward-btn:disabled:hover {
+        .back-btn:disabled:hover, .forward-btn:disabled:hover {{
             background: #1a1a1a;
             color: #ffffff;
-        }
+        }}
 
-        .url-bar {
+        .url-bar {{
             width: 100%;
             height: 32px;
             background: #000000;
@@ -248,17 +258,17 @@ pub fn get_tab_bar_styles() -> &'static str {
             -webkit-app-region: no-drag;
             user-select: text;
             -webkit-user-select: text;
-        }
+        }}
 
-        .url-bar:focus {
+        .url-bar:focus {{
             background: #1a1a1a;
-        }
+        }}
 
-        .url-bar::placeholder {
+        .url-bar::placeholder {{
             color: #999999;
-        }
+        }}
 
-        .bottom-controls {
+        .bottom-controls {{
             position: fixed;
             bottom: 12px;
             left: 12px;
@@ -268,9 +278,9 @@ pub fn get_tab_bar_styles() -> &'static str {
             gap: 8px;
             z-index: 102;
             -webkit-app-region: no-drag;
-        }
+        }}
 
-        .downloads-btn, .settings-btn {
+        .downloads-btn, .settings-btn {{
             width: 50%;
             height: 36px;
             background: #1a1a1a;
@@ -283,42 +293,42 @@ pub fn get_tab_bar_styles() -> &'static str {
             justify-content: center;
             padding: 16px;
             flex-shrink: 0;
-        }
+        }}
 
-        .downloads-btn svg, .settings-btn svg {
+        .downloads-btn svg, .settings-btn svg {{
             width: 16px;
             height: 16px;
-        }
+        }}
 
-        .downloads-btn:hover, .settings-btn:hover {
+        .downloads-btn:hover, .settings-btn:hover {{
             background: #ffffff;
             color: #000000;
-        }
+        }}
 
-        .downloads-btn:active, .settings-btn:active {
+        .downloads-btn:active, .settings-btn:active {{
             background: #000000;
             color: #ffffff;
-        }
+        }}
 
-        .downloads-btn.has-downloads {
+        .downloads-btn.has-downloads {{
             background: #ffffff;
             color: #000000;
-        }
+        }}
 
-        .downloads-btn.pulse {
+        .downloads-btn.pulse {{
             animation: downloadPulse 0.3s linear;
-        }
+        }}
 
-        @keyframes downloadPulse {
-            0%, 100% {
+        @keyframes downloadPulse {{
+            0%, 100% {{
                 border-width: 1px;
-            }
-            50% {
+            }}
+            50% {{
                 border-width: 2px;
-            }
-        }
+            }}
+        }}
 
-        .download-badge {
+        .download-badge {{
             position: absolute;
             top: -6px;
             right: -6px;
@@ -334,15 +344,27 @@ pub fn get_tab_bar_styles() -> &'static str {
             padding: 0 2px;
             border: 1px solid #000000;
             animation: badgeAppear 0.2s linear;
-        }
+        }}
 
-        @keyframes badgeAppear {
-            0% {
+        @keyframes badgeAppear {{
+            0% {{
                 opacity: 0;
-            }
-            100% {
+            }}
+            100% {{
                 opacity: 1;
-            }
-        }
-    "#
+            }}
+        }}
+
+        .split-view-controls {{
+            position: fixed;
+            top: 44px;
+            right: 12px;
+            display: flex;
+            gap: 2px;
+            z-index: 101;
+            -webkit-app-region: no-drag;
+        }}
+    "#,
+        fonts::get_gohu_font_face()
+    )
 }

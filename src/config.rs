@@ -55,6 +55,8 @@ pub struct UiSettings {
     pub vim_mode: bool,
     #[serde(default = "default_false")]
     pub debug: bool,
+    #[serde(default = "default_true")]
+    pub sounds: bool,
 }
 
 /// Default value function for boolean fields (returns false).
@@ -67,6 +69,7 @@ impl Default for UiSettings {
         UiSettings {
             vim_mode: true,
             debug: false,
+            sounds: true,
         }
     }
 }
@@ -175,6 +178,7 @@ impl Config {
     /// Formats a search query into a complete search engine URL.
     /// Replaces `{}` placeholder in the search engine URL with the encoded query.
     pub fn format_search_url(&self, query: &str) -> String {
-        self.search_engine.replace("{}", &urlencoding::encode(query))
+        self.search_engine
+            .replace("{}", &urlencoding::encode(query))
     }
 }

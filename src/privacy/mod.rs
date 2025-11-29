@@ -3,8 +3,7 @@ pub mod scripts;
 use crate::config::PrivacySettings;
 
 pub use scripts::{
-    get_all_privacy_scripts_with_config,
-    get_content_renderer as get_content_renderer_from_privacy,
+    get_all_privacy_scripts_with_config, get_content_renderer as get_content_renderer_from_privacy,
 };
 
 /// Generates a combined JavaScript initialization script with all privacy protections and UI animations.

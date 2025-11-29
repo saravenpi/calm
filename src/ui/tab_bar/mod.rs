@@ -1,12 +1,15 @@
 pub mod html;
-pub mod styles;
 pub mod script;
+pub mod styles;
 
 pub use html::get_tab_bar_html_structure;
-pub use styles::get_tab_bar_styles;
 pub use script::get_tab_bar_script;
+pub use styles::get_tab_bar_styles;
 
-pub fn get_complete_tab_bar_html(vim_mode: bool) -> String {
+pub fn get_complete_tab_bar_html(vim_mode: bool, sounds_enabled: bool) -> String {
+    let styles = get_tab_bar_styles();
+    let sounds_script = crate::ui::get_sounds_script(sounds_enabled);
+    let keyboard_handler = crate::ui::get_keyboard_handler_script();
     format!(
         r#"<!DOCTYPE html>
 <html>
@@ -23,12 +26,16 @@ pub fn get_complete_tab_bar_html(vim_mode: bool) -> String {
     <script>
         window.vimMode = {};
         {}
+        {}
+        {}
     </script>
 </body>
 </html>"#,
-        get_tab_bar_styles(),
+        styles,
         get_tab_bar_html_structure(),
         vim_mode,
-        get_tab_bar_script()
+        sounds_script,
+        get_tab_bar_script(),
+        keyboard_handler
     )
 }

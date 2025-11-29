@@ -1,24 +1,26 @@
 mod config;
 mod debug;
+mod downloads;
+mod errors;
+mod ipc;
 mod privacy;
+mod shortcuts;
+mod single_instance;
 mod tabs;
 mod ui;
 mod url_cleaner;
+mod utils;
 mod vimium_hints;
 mod window;
 
+use muda::{Menu, PredefinedMenuItem, Submenu};
 use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Instant};
 use tao::{
-    event::{Event, WindowEvent, ElementState},
+    event::{ElementState, Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     keyboard::ModifiersState,
     window::WindowId,
 };
-use global_hotkey::{
-    GlobalHotKeyManager, GlobalHotKeyEvent,
-    hotkey::{HotKey, Modifiers, Code},
-};
-use muda::{Menu, Submenu, PredefinedMenuItem};
 
 use config::Config;
 use window::{create_browser_window, BrowserWindowComponents};
@@ -34,7 +36,7 @@ const DOWNLOAD_SIDEBAR_WIDTH: i32 = 360;
 /// # Returns
 ///
 /// The converted URL string
-fn convert_file_url(url: &str) -> String {
+pub fn convert_file_url(url: &str) -> String {
     if url.starts_with("file://") {
         url.replace("file://", "calmfile://localhost")
     } else {
@@ -85,7 +87,43 @@ fn main() -> wry::Result<()> {
     let config = Config::load();
     debug::set_debug_enabled(config.ui.debug);
     debug_log!("Debug mode enabled");
-    debug_log!("Config loaded: vim_mode={}, debug={}", config.ui.vim_mode, config.ui.debug);
+    debug_log!(
+        "Config loaded: vim_mode={}, debug={}",
+        config.ui.vim_mode,
+        config.ui.debug
+    );
+
+    if !single_instance::SingleInstance::is_single() {
+        let url_to_send = if args.is_empty() {
+            convert_file_url(&config.default_url)
+        } else {
+            let first_arg = &args[0];
+            let url = if first_arg.starts_with("http://")
+                || first_arg.starts_with("https://")
+                || first_arg.starts_with("file://")
+            {
+                first_arg.clone()
+            } else if first_arg.contains("://") {
+                first_arg.clone()
+            } else if first_arg.contains('.') && !first_arg.contains(' ') {
+                format!("https://{}", first_arg)
+            } else {
+                let query = args.join(" ");
+                config.format_search_url(&query)
+            };
+            convert_file_url(&url)
+        };
+
+        debug_log!("Sending URL to existing instance: {}", url_to_send);
+        if let Err(e) = single_instance::SingleInstance::send_to_existing(&url_to_send) {
+            eprintln!("Failed to send URL to existing instance: {}", e);
+            return Ok(());
+        }
+        println!("Opened URL in existing Calm instance");
+        return Ok(());
+    }
+
+    debug_log!("Starting new Calm instance");
 
     let event_loop = EventLoop::new();
 
@@ -94,15 +132,19 @@ fn main() -> wry::Result<()> {
         let menu_bar = Menu::new();
 
         let edit_menu = Submenu::new("Edit", true);
-        edit_menu.append_items(&[
-            &PredefinedMenuItem::copy(None),
-            &PredefinedMenuItem::cut(None),
-            &PredefinedMenuItem::paste(None),
-            &PredefinedMenuItem::separator(),
-            &PredefinedMenuItem::select_all(None),
-        ]).expect("Failed to append Edit menu items");
+        edit_menu
+            .append_items(&[
+                &PredefinedMenuItem::copy(None),
+                &PredefinedMenuItem::cut(None),
+                &PredefinedMenuItem::paste(None),
+                &PredefinedMenuItem::separator(),
+                &PredefinedMenuItem::select_all(None),
+            ])
+            .expect("Failed to append Edit menu items");
 
-        menu_bar.append(&edit_menu).expect("Failed to append Edit menu");
+        menu_bar
+            .append(&edit_menu)
+            .expect("Failed to append Edit menu");
         menu_bar.init_for_nsapp();
     }
 
@@ -110,7 +152,10 @@ fn main() -> wry::Result<()> {
         (convert_file_url(&config.default_url), false)
     } else {
         let first_arg = &args[0];
-        let url = if first_arg.starts_with("http://") || first_arg.starts_with("https://") || first_arg.starts_with("file://") {
+        let url = if first_arg.starts_with("http://")
+            || first_arg.starts_with("https://")
+            || first_arg.starts_with("file://")
+        {
             first_arg.clone()
         } else if first_arg.contains("://") {
             first_arg.clone()
@@ -141,38 +186,50 @@ fn main() -> wry::Result<()> {
 
     let windows_ref = Rc::new(RefCell::new(windows));
     let last_g_key_time = Rc::new(RefCell::new(None::<Instant>));
-    let last_new_tab_time = Rc::new(RefCell::new(None::<Instant>));
-    let last_close_tab_time = Rc::new(RefCell::new(None::<Instant>));
-    let last_new_window_time = Rc::new(RefCell::new(None::<Instant>));
     let modifiers_state = Rc::new(RefCell::new(ModifiersState::default()));
+    let shortcut_manager = shortcuts::ShortcutManager::new();
 
-    let hotkey_manager = GlobalHotKeyManager::new().expect("Failed to create hotkey manager");
-    let cmd_or_ctrl = if cfg!(target_os = "macos") { Modifiers::SUPER } else { Modifiers::CONTROL };
-
-    let hotkey_reload = HotKey::new(Some(cmd_or_ctrl), Code::KeyR);
-    let hotkey_focus_url = HotKey::new(Some(cmd_or_ctrl), Code::KeyL);
-    let hotkey_toggle_downloads = HotKey::new(Some(cmd_or_ctrl), Code::KeyJ);
-    let hotkey_focus_sidebar = HotKey::new(Some(cmd_or_ctrl), Code::KeyE);
-    let hotkey_find = HotKey::new(Some(cmd_or_ctrl), Code::KeyF);
-    let hotkey_new_tab = HotKey::new(Some(cmd_or_ctrl), Code::KeyT);
-    let hotkey_close_tab = HotKey::new(Some(cmd_or_ctrl), Code::KeyW);
-    let hotkey_new_window = HotKey::new(Some(cmd_or_ctrl), Code::KeyN);
-    let hotkey_split_view = HotKey::new(Some(cmd_or_ctrl | Modifiers::SHIFT), Code::KeyS);
-    let hotkey_quit = HotKey::new(Some(cmd_or_ctrl), Code::KeyQ);
-
-    hotkey_manager.register(hotkey_reload).expect("Failed to register Cmd+R");
-    hotkey_manager.register(hotkey_focus_url).expect("Failed to register Cmd+L");
-    hotkey_manager.register(hotkey_toggle_downloads).expect("Failed to register Cmd+J");
-    hotkey_manager.register(hotkey_focus_sidebar).expect("Failed to register Cmd+E");
-    hotkey_manager.register(hotkey_find).expect("Failed to register Cmd+F");
-    hotkey_manager.register(hotkey_new_tab).expect("Failed to register Cmd+T");
-    hotkey_manager.register(hotkey_close_tab).expect("Failed to register Cmd+W");
-    hotkey_manager.register(hotkey_new_window).expect("Failed to register Cmd+N");
-    hotkey_manager.register(hotkey_split_view).expect("Failed to register Cmd+Shift+S");
-    hotkey_manager.register(hotkey_quit).expect("Failed to register Cmd+Q");
+    let url_receiver = match single_instance::SingleInstance::start_listener() {
+        Ok(rx) => {
+            debug_log!("IPC listener started successfully");
+            Some(rx)
+        }
+        Err(e) => {
+            eprintln!("Failed to start IPC listener: {}", e);
+            None
+        }
+    };
 
     event_loop.run(move |event, event_loop_target, control_flow| {
         *control_flow = ControlFlow::Wait;
+
+        if let Some(ref receiver) = url_receiver {
+            while let Ok(url) = receiver.try_recv() {
+                debug_log!("Received URL from another instance: {}", url);
+
+                if let Some(focused_id) = *focused_window_id.borrow() {
+                    let windows = windows_ref.borrow();
+                    if let Some(components) = windows.get(&focused_id) {
+                        match components.tab_manager.borrow_mut().create_tab(&components.window, &url) {
+                            Ok(tab_id) => {
+                                debug_log!("Created new tab {} for URL: {}", tab_id, url);
+                                components.tab_manager.borrow_mut().switch_to_tab(tab_id);
+
+                                let escaped_url = serde_json::to_string(&url).unwrap_or_else(|_| "\"\"".to_string());
+                                let script = format!(
+                                    "window.addTab({}, {}); window.setActiveTab({}); window.updateUrlBar({});",
+                                    tab_id, escaped_url, tab_id, escaped_url
+                                );
+                                let _ = components.tab_bar_webview.evaluate_script(&script);
+                            }
+                            Err(e) => {
+                                debug_log!("Failed to create tab for URL: {:?}", e);
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         let mut windows_to_close = Vec::new();
         for (window_id, components) in windows_ref.borrow().iter() {
@@ -189,90 +246,6 @@ fn main() -> wry::Result<()> {
         if windows_ref.borrow().is_empty() {
             *control_flow = ControlFlow::Exit;
             return;
-        }
-
-        if let Ok(global_hotkey_event) = GlobalHotKeyEvent::receiver().try_recv() {
-            let hotkey_id = global_hotkey_event.id();
-            debug_log!("GlobalHotKey event received: id={}", hotkey_id);
-
-            let mut drained_count = 0;
-            loop {
-                match GlobalHotKeyEvent::receiver().try_recv() {
-                    Ok(next_event) if next_event.id() == hotkey_id => {
-                        drained_count += 1;
-                        continue;
-                    },
-                    _ => break,
-                }
-            }
-            if drained_count > 0 {
-                debug_log!("Drained {} duplicate events for hotkey {}", drained_count, hotkey_id);
-            }
-
-            if hotkey_id == hotkey_quit.id() {
-                *control_flow = ControlFlow::Exit;
-                return;
-            } else if hotkey_id == hotkey_new_window.id() {
-                let now = Instant::now();
-                let should_execute = {
-                    let mut last_time = last_new_window_time.borrow_mut();
-                    if let Some(last) = *last_time {
-                        let elapsed = now.duration_since(last).as_millis();
-                        if elapsed < 250 {
-                            debug_log!("Cmd+N DEBOUNCED - only {}ms since last, IGNORING", elapsed);
-                            false
-                        } else {
-                            *last_time = Some(now);
-                            true
-                        }
-                    } else {
-                        *last_time = Some(now);
-                        true
-                    }
-                };
-
-                if should_execute {
-                    debug_log!("=== Cmd+N GlobalHotKey FIRED - creating new window ===");
-                    let default_url = convert_file_url(&config.borrow().default_url);
-                    match create_browser_window(
-                        event_loop_target,
-                        Rc::clone(&config),
-                        default_url,
-                        false,
-                    ) {
-                        Ok(new_window) => {
-                            let new_window_id = new_window.window.id();
-                            debug_log!("Created new window: {:?}", new_window_id);
-                            *focused_window_id.borrow_mut() = Some(new_window_id);
-                            windows_ref.borrow_mut().insert(new_window_id, new_window);
-                        }
-                        Err(e) => {
-                            debug_log!("Failed to create new window: {:?}", e);
-                        }
-                    }
-                }
-            } else {
-                if let Some(focused_id) = *focused_window_id.borrow() {
-                    let windows = windows_ref.borrow();
-                    if let Some(components) = windows.get(&focused_id) {
-                        handle_hotkey(
-                            hotkey_id,
-                            &hotkey_reload,
-                            &hotkey_focus_url,
-                            &hotkey_toggle_downloads,
-                            &hotkey_focus_sidebar,
-                            &hotkey_find,
-                            &hotkey_new_tab,
-                            &hotkey_close_tab,
-                            &hotkey_split_view,
-                            components,
-                            &config,
-                            &last_new_tab_time,
-                            &last_close_tab_time,
-                        );
-                    }
-                }
-            }
         }
 
         match event {
@@ -342,7 +315,7 @@ fn main() -> wry::Result<()> {
                 }
             }
             Event::WindowEvent {
-                window_id,
+                window_id: _window_id,
                 event: WindowEvent::ModifiersChanged(new_state),
                 ..
             } => {
@@ -359,13 +332,27 @@ fn main() -> wry::Result<()> {
                 let windows = windows_ref.borrow();
                 if let Some(components) = windows.get(&window_id) {
                     if key_event.state == ElementState::Pressed {
-                        handle_keyboard_input(
-                            key_event,
-                            components,
-                            &modifiers_state,
-                            &config,
-                            &last_g_key_time,
-                        );
+                        let modifiers = *modifiers_state.borrow();
+
+                        if let Some(shortcut) = shortcuts::Shortcut::from_key_event(&key_event, modifiers) {
+                            shortcut_manager.handle_shortcut(
+                                shortcut,
+                                components,
+                                &config,
+                                event_loop_target,
+                                &windows_ref,
+                                &focused_window_id,
+                                control_flow,
+                            );
+                        } else {
+                            handle_keyboard_input(
+                                key_event,
+                                components,
+                                &modifiers_state,
+                                &config,
+                                &last_g_key_time,
+                            );
+                        }
                     }
                 }
             }
@@ -374,208 +361,22 @@ fn main() -> wry::Result<()> {
     });
 }
 
-/// Handles global hotkey events and dispatches them to appropriate actions.
-///
-/// # Arguments
-///
-/// * `hotkey_id` - The ID of the triggered hotkey
-/// * `hotkey_reload` - HotKey for page reload
-/// * `hotkey_focus_url` - HotKey for URL bar focus
-/// * `hotkey_toggle_downloads` - HotKey for downloads sidebar
-/// * `hotkey_focus_sidebar` - HotKey for sidebar focus
-/// * `hotkey_find` - HotKey for find/search
-/// * `hotkey_new_tab` - HotKey for new tab creation
-/// * `hotkey_close_tab` - HotKey for tab closing
-/// * `hotkey_split_view` - HotKey for split view toggle
-/// * `components` - Browser window components
-/// * `config` - Application configuration
-/// * `last_new_tab_time` - Timestamp of last new tab action for debouncing
-/// * `last_close_tab_time` - Timestamp of last close tab action for debouncing
-fn handle_hotkey(
-    hotkey_id: u32,
-    hotkey_reload: &HotKey,
-    hotkey_focus_url: &HotKey,
-    hotkey_toggle_downloads: &HotKey,
-    hotkey_focus_sidebar: &HotKey,
-    hotkey_find: &HotKey,
-    hotkey_new_tab: &HotKey,
-    hotkey_close_tab: &HotKey,
-    hotkey_split_view: &HotKey,
-    components: &BrowserWindowComponents,
-    config: &Rc<RefCell<Config>>,
-    last_new_tab_time: &Rc<RefCell<Option<Instant>>>,
-    last_close_tab_time: &Rc<RefCell<Option<Instant>>>,
-) {
-    if hotkey_id == hotkey_reload.id() {
-        components.tab_manager.borrow().reload_active_tab();
-    } else if hotkey_id == hotkey_split_view.id() {
-        debug_log!("=== Cmd+Shift+S GlobalHotKey FIRED - toggling split view ===");
-        let toggled = components.tab_manager.borrow_mut().toggle_split_view(&components.window);
-        if toggled {
-            debug_log!("Split view enabled");
-        } else {
-            debug_log!("Split view disabled");
-        }
-        let enabled = components.tab_manager.borrow().is_split_view_enabled();
-        let script = format!("if (window.updateSplitViewButtons) {{ window.updateSplitViewButtons({}); }}", enabled);
-        let _ = components.tab_bar_webview.evaluate_script(&script);
-    } else if hotkey_id == hotkey_focus_url.id() {
-        let script = "const urlBar = document.getElementById('url-bar'); if (urlBar) { urlBar.focus(); urlBar.select(); }";
-        let _ = components.tab_bar_webview.evaluate_script(script);
-    } else if hotkey_id == hotkey_toggle_downloads.id() {
-        let now = Instant::now();
-        let should_execute = {
-            let mut last_time = components.last_toggle_downloads_time.borrow_mut();
-            if let Some(last) = *last_time {
-                let elapsed = now.duration_since(last).as_millis();
-                if elapsed < 250 {
-                    debug_log!("Cmd+J GlobalHotkey DEBOUNCED - only {}ms since last, IGNORING", elapsed);
-                    false
-                } else {
-                    *last_time = Some(now);
-                    true
-                }
-            } else {
-                *last_time = Some(now);
-                true
-            }
-        };
-
-        if should_execute {
-            debug_log!("=== Cmd+J GlobalHotKey FIRED - toggling downloads sidebar ===");
-            let mut is_visible = components.sidebar_visible.borrow_mut();
-            *is_visible = !*is_visible;
-
-            if *is_visible {
-                let _ = components.download_overlay.set_visible(true);
-                std::thread::sleep(std::time::Duration::from_millis(10));
-                let script = "window.toggleVisibility(true);";
-                let _ = components.download_overlay.evaluate_script(script);
-                components.tab_manager.borrow_mut().resize_all_tabs_with_sidebar(
-                    &components.window,
-                    DOWNLOAD_SIDEBAR_WIDTH as u32,
-                );
-            } else {
-                let script = "window.toggleVisibility(false);";
-                let _ = components.download_overlay.evaluate_script(script);
-                std::thread::sleep(std::time::Duration::from_millis(300));
-                let _ = components.download_overlay.set_visible(false);
-                components.tab_manager.borrow_mut().resize_all_tabs(&components.window);
-            }
-        }
-    } else if hotkey_id == hotkey_focus_sidebar.id() {
-        let _ = components.tab_bar_webview.focus();
-        let script = "window.showSidebarFocus(); if (window.tabs.length > 0) { if (window.focusedTabIndex < 0) { window.updateFocusedTab(0); } else { window.updateFocusedTab(window.focusedTabIndex); } }";
-        let _ = components.tab_bar_webview.evaluate_script(script);
-    } else if hotkey_id == hotkey_find.id() {
-        if let Some(active_webview) = components.tab_manager.borrow().get_active_tab_webview() {
-            let _ = active_webview.evaluate_script("window.calmStartSearch();");
-        }
-    } else if hotkey_id == hotkey_new_tab.id() {
-        let now = Instant::now();
-        let should_execute = {
-            let mut last_time = last_new_tab_time.borrow_mut();
-            if let Some(last) = *last_time {
-                let elapsed = now.duration_since(last).as_millis();
-                if elapsed < 250 {
-                    debug_log!("Cmd+T DEBOUNCED - only {}ms since last, IGNORING", elapsed);
-                    false
-                } else {
-                    *last_time = Some(now);
-                    true
-                }
-            } else {
-                *last_time = Some(now);
-                true
-            }
-        };
-
-        if should_execute {
-            debug_log!("=== Cmd+T GlobalHotKey FIRED - creating new tab ===");
-            let tab_count_before = components.tab_manager.borrow().get_tab_count();
-            debug_log!("Tab count before: {}", tab_count_before);
-
-            let default_url = convert_file_url(&config.borrow().default_url);
-            let tab_result = components.tab_manager.borrow_mut().create_tab(&components.window, &default_url);
-            if let Ok(tab_id) = tab_result {
-                debug_log!("Created tab with ID: {}", tab_id);
-                components.tab_manager.borrow_mut().switch_to_tab(tab_id);
-                let escaped_url = serde_json::to_string(&default_url).unwrap_or_else(|_| "\"\"".to_string());
-                let script = format!(
-                    "window.addTab({}, {}); window.setActiveTab({}); window.updateUrlBar({});",
-                    tab_id, escaped_url, tab_id, escaped_url
-                );
-                let _ = components.tab_bar_webview.evaluate_script(&script);
-                let focus_script = "document.getElementById('url-bar')?.focus();";
-                let _ = components.tab_bar_webview.evaluate_script(focus_script);
-                let tab_count_after = components.tab_manager.borrow().get_tab_count();
-                debug_log!("Tab count after: {}", tab_count_after);
-            } else {
-                debug_log!("ERROR: Failed to create tab");
-            }
-        }
-    } else if hotkey_id == hotkey_close_tab.id() {
-        let now = Instant::now();
-        let should_execute = {
-            let mut last_time = last_close_tab_time.borrow_mut();
-            if let Some(last) = *last_time {
-                let elapsed = now.duration_since(last).as_millis();
-                if elapsed < 250 {
-                    debug_log!("=== Cmd+W DEBOUNCED - only {}ms since last, IGNORING ===", elapsed);
-                    false
-                } else {
-                    debug_log!("=== Cmd+W allowed - {}ms since last ===", elapsed);
-                    *last_time = Some(now);
-                    true
-                }
-            } else {
-                debug_log!("=== Cmd+W first press - executing ===");
-                *last_time = Some(now);
-                true
-            }
-        };
-
-        if should_execute {
-            debug_log!("=== Cmd+W GlobalHotKey EXECUTING - closing ONE tab ===");
-
-            let tab_count = components.tab_manager.borrow().get_tab_count();
-            let active_tab_id = components.tab_manager.borrow().get_active_tab_id();
-
-            debug_log!("Tab count before close: {}", tab_count);
-
-            if tab_count <= 1 {
-                debug_log!("Last tab - closing window");
-                *components.should_quit.borrow_mut() = true;
-            } else {
-                if let Some(active_tab_id) = active_tab_id {
-                    debug_log!("Closing ONLY tab ID: {}", active_tab_id);
-
-                    components.tab_manager.borrow_mut().close_tab(active_tab_id);
-
-                    let script = format!("window.removeTab({});", active_tab_id);
-                    let _ = components.tab_bar_webview.evaluate_script(&script);
-
-                    let remaining = components.tab_manager.borrow().get_tab_count();
-                    debug_log!("Tab {} closed, remaining tabs: {}", active_tab_id, remaining);
-                } else {
-                    debug_log!("ERROR: No active tab found");
-                }
-            }
-        }
-    }
-}
-
-/// Handles window resize events by adjusting bounds of tab bar, download sidebar, and tab webviews.
+/// Handles window resize events by updating bounds of all UI components.
 ///
 /// # Arguments
 ///
 /// * `components` - Browser window components to resize
+#[allow(clippy::too_many_arguments)]
 fn handle_window_resize(components: &BrowserWindowComponents) {
     let window_size = components.window.inner_size();
     let scale_factor = components.window.scale_factor();
 
-    debug_log!("Handling resize - size: {}x{}, scale: {}",
-               window_size.width, window_size.height, scale_factor);
+    debug_log!(
+        "Handling resize - size: {}x{}, scale: {}",
+        window_size.width,
+        window_size.height,
+        scale_factor
+    );
 
     let tab_bar_bounds = wry::Rect {
         position: tao::dpi::LogicalPosition::new(0, 0).into(),
@@ -592,9 +393,15 @@ fn handle_window_resize(components: &BrowserWindowComponents) {
 
     let is_visible = *components.sidebar_visible.borrow();
     if is_visible {
-        components.tab_manager.borrow_mut().resize_all_tabs_with_sidebar(&components.window, DOWNLOAD_SIDEBAR_WIDTH as u32);
+        components
+            .tab_manager
+            .borrow_mut()
+            .resize_all_tabs_with_sidebar(&components.window, DOWNLOAD_SIDEBAR_WIDTH as u32);
     } else {
-        components.tab_manager.borrow_mut().resize_all_tabs(&components.window);
+        components
+            .tab_manager
+            .borrow_mut()
+            .resize_all_tabs(&components.window);
     }
 }
 
@@ -616,7 +423,8 @@ fn handle_keyboard_input(
 ) {
     let modifiers = *modifiers_state.borrow();
 
-    debug_log!("Key pressed: {:?}, modifiers: ctrl={}, super={}, alt={}, shift={}",
+    debug_log!(
+        "Key pressed: {:?}, modifiers: ctrl={}, super={}, alt={}, shift={}",
         key_event.logical_key,
         modifiers.control_key(),
         modifiers.super_key(),
@@ -626,7 +434,8 @@ fn handle_keyboard_input(
 
     if key_event.logical_key == tao::keyboard::Key::Enter {
         debug_log!("Enter key - focusing selected tab");
-        let script = "if (window.focusedTabIndex >= 0) { window.focusTab(window.focusedTabIndex); }";
+        let script =
+            "if (window.focusedTabIndex >= 0) { window.focusTab(window.focusedTabIndex); }";
         let _ = components.tab_bar_webview.evaluate_script(script);
         return;
     }
@@ -680,7 +489,7 @@ fn handle_keyboard_input(
                 _ => None
             }
         }
-        _ => None
+        _ => None,
     };
 
     if let Some(script) = action_script {

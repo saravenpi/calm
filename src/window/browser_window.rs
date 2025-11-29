@@ -1,11 +1,12 @@
-use crate::tabs::TabManager;
 use crate::config::Config;
-use std::rc::Rc;
+use crate::tabs::TabManager;
 use std::cell::RefCell;
+use std::rc::Rc;
 use tao::window::Window;
 use wry::WebView;
 
-/// Represents a browser window with its associated components.
+/// Represents a single browser window with its tabs, webviews, and state.
+#[allow(dead_code)]
 pub struct BrowserWindow {
     pub window_id: usize,
     pub window: Rc<Window>,
@@ -15,6 +16,7 @@ pub struct BrowserWindow {
     pub sidebar_visible: Rc<RefCell<bool>>,
 }
 
+#[allow(dead_code)]
 impl BrowserWindow {
     /// Creates a new browser window with the specified configuration.
     pub fn new(

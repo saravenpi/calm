@@ -1,21 +1,20 @@
-pub fn get_styles() -> &'static str {
-    r#"
-        @font-face {
-            font-family: 'gohu';
-            src: url('data:application/font-woff2;charset=utf-8;base64,d09GMgABAAAAABEYAA4AAAAAJKAAABDEAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGhYbHhyBbAZgAIEICghWCYM8EQwKgdRgg7hzC4NAAAE2AiQDhx4EIAWDAAeFPQyBZxu8IqOQHkO2HySh4MbHmL/M3v+TQLAbdqUBAhsOACi1kcDKiixZqgMYVqyqKju0e3//b7Pb1SIRqC5SN6ErCDmT0DSReCdh0kgkn2Dz/P//n3m/+cXsO7PvzO07c+/M3DszJJKS5kkk0kmkk0gkkdwk0kmke+/eJvfuPQe9e5vce/emL7lJokTy3ntPIin33ntP7r33nvz/f5tdYKuqKqmqomor87+ft3e21N7ZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9s2afbNm36zZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9s2afbNm36zZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9s2afbNm36zZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9v0HAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') format('woff2');
-            font-weight: normal;
-            font-style: normal;
-        }
+use crate::ui::fonts;
 
-        * {
+pub fn get_styles() -> String {
+    format!(
+        r#"
+        {}
+
+
+        * {{
             margin: 0;
             padding: 0;
             box-sizing: border-box;
             image-rendering: pixelated;
             image-rendering: crisp-edges;
-        }
+        }}
 
-        body {
+        body {{
             font-family: 'gohu', monospace;
             background: #000000;
             overflow: hidden;
@@ -24,9 +23,9 @@ pub fn get_styles() -> &'static str {
             width: 100%;
             height: 100%;
             font-size: 11px;
-        }
+        }}
 
-        .downloads-panel {
+        .downloads-panel {{
             width: 100%;
             height: 100vh;
             background: #000000;
@@ -38,18 +37,18 @@ pub fn get_styles() -> &'static str {
             position: fixed;
             top: 0;
             right: 0;
-        }
+        }}
 
-        .downloads-content {
+        .downloads-content {{
             width: 100%;
             height: 100%;
             background: #000000;
             display: flex;
             flex-direction: column;
             overflow: hidden;
-        }
+        }}
 
-        .downloads-header {
+        .downloads-header {{
             padding: 8px;
             font-size: 11px;
             font-weight: bold;
@@ -57,38 +56,38 @@ pub fn get_styles() -> &'static str {
             background: #000000;
             border-bottom: 1px solid #ffffff;
             flex-shrink: 0;
-        }
+        }}
 
-        .downloads-list {
+        .downloads-list {{
             overflow-y: auto;
             flex: 1;
             padding: 4px;
-        }
+        }}
 
-        .downloads-list::-webkit-scrollbar {
+        .downloads-list::-webkit-scrollbar {{
             width: 8px;
-        }
+        }}
 
-        .downloads-list::-webkit-scrollbar-track {
+        .downloads-list::-webkit-scrollbar-track {{
             background: #000000;
-        }
+        }}
 
-        .downloads-list::-webkit-scrollbar-thumb {
+        .downloads-list::-webkit-scrollbar-thumb {{
             background: #ffffff;
-        }
+        }}
 
-        .downloads-list::-webkit-scrollbar-thumb:hover {
+        .downloads-list::-webkit-scrollbar-thumb:hover {{
             background: #cccccc;
-        }
+        }}
 
-        .downloads-empty {
+        .downloads-empty {{
             padding: 16px 8px;
             text-align: center;
             color: #666666;
             font-size: 11px;
-        }
+        }}
 
-        .download-item {
+        .download-item {{
             background: #1a1a1a;
             border: 1px solid #ffffff;
             padding: 8px;
@@ -96,30 +95,30 @@ pub fn get_styles() -> &'static str {
             color: #ffffff;
             animation: downloadItemEnter 0.2s linear;
             transition: none;
-        }
+        }}
 
-        .download-item:hover {
+        .download-item:hover {{
             background: #333333;
             color: #ffffff;
-        }
+        }}
 
-        .download-item.completed {
+        .download-item.completed {{
             background: #1a4d1a;
             color: #ffffff;
             border-color: #00ff00;
-        }
+        }}
 
-        .download-item.failed {
+        .download-item.failed {{
             background: #4d1a1a;
             color: #ffffff;
             border-color: #ff0000;
-        }
+        }}
 
-        .download-item.removing {
+        .download-item.removing {{
             opacity: 0;
-        }
+        }}
 
-        .download-name {
+        .download-name {{
             color: inherit;
             font-size: 11px;
             font-weight: bold;
@@ -127,23 +126,23 @@ pub fn get_styles() -> &'static str {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-        }
+        }}
 
-        .download-progress-bar {
+        .download-progress-bar {{
             height: 8px;
             background: #333333;
             border: 1px solid #666666;
             overflow: hidden;
             margin-bottom: 4px;
-        }
+        }}
 
-        .download-progress-fill {
+        .download-progress-fill {{
             height: 100%;
             background: #ffffff;
             transition: none;
-        }
+        }}
 
-        .download-progress-fill.indeterminate {
+        .download-progress-fill.indeterminate {{
             width: 100%;
             background: repeating-linear-gradient(
                 90deg,
@@ -154,46 +153,46 @@ pub fn get_styles() -> &'static str {
             );
             background-size: 16px 100%;
             animation: indeterminateProgress 0.5s infinite linear;
-        }
+        }}
 
-        .download-progress-fill.completed {
+        .download-progress-fill.completed {{
             background: #00ff00 !important;
             animation: none !important;
             width: 100% !important;
-        }
+        }}
 
-        .download-progress-fill.failed {
+        .download-progress-fill.failed {{
             background: #ff0000 !important;
             animation: none !important;
             width: 100% !important;
-        }
+        }}
 
-        @keyframes indeterminateProgress {
-            0% {
+        @keyframes indeterminateProgress {{
+            0% {{
                 background-position: 0 0;
-            }
-            100% {
+            }}
+            100% {{
                 background-position: 16px 0;
-            }
-        }
+            }}
+        }}
 
-        .download-info {
+        .download-info {{
             display: flex;
             justify-content: space-between;
             font-size: 9px;
             color: inherit;
-        }
+        }}
 
-        @keyframes downloadItemEnter {
-            from {
+        @keyframes downloadItemEnter {{
+            from {{
                 opacity: 0;
-            }
-            to {
+            }}
+            to {{
                 opacity: 1;
-            }
-        }
+            }}
+        }}
 
-        .download-spinner {
+        .download-spinner {{
             display: inline-block;
             width: 8px;
             height: 8px;
@@ -202,12 +201,91 @@ pub fn get_styles() -> &'static str {
             animation: spin 0.6s linear infinite;
             margin-right: 4px;
             vertical-align: middle;
-        }
+        }}
 
-        @keyframes spin {
-            to {
+        @keyframes spin {{
+            to {{
                 transform: rotate(360deg);
-            }
-        }
-    "#
+            }}
+        }}
+
+        .download-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }}
+
+        .download-folder-icon {{
+            cursor: pointer;
+            font-size: 16px;
+            padding: 2px 4px;
+            flex-shrink: 0;
+            opacity: 0.7;
+            transition: opacity 0.1s linear;
+        }}
+
+        .download-folder-icon:hover {{
+            opacity: 1;
+        }}
+
+        .download-context-menu {{
+            position: fixed;
+            background: #1a1a1a;
+            border: 2px solid #ffffff;
+            min-width: 180px;
+            z-index: 10000;
+            font-size: 11px;
+            color: #ffffff;
+            padding: 4px;
+        }}
+
+        .context-menu-item {{
+            padding: 6px 8px;
+            cursor: pointer;
+            color: #ffffff;
+            transition: background 0.05s linear;
+        }}
+
+        .context-menu-item:hover {{
+            background: #333333;
+        }}
+
+        .context-menu-separator {{
+            height: 1px;
+            background: #666666;
+            margin: 2px 0;
+        }}
+
+        .downloads-footer {{
+            padding: 8px;
+            border-top: 1px solid #ffffff;
+            background: #000000;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: center;
+        }}
+
+        .clear-history-btn {{
+            background: #1a1a1a;
+            color: #ffffff;
+            border: 1px solid #ffffff;
+            padding: 6px 12px;
+            font-size: 11px;
+            font-family: 'gohu', monospace;
+            cursor: pointer;
+            transition: background 0.05s linear;
+        }}
+
+        .clear-history-btn:hover {{
+            background: #333333;
+        }}
+
+        .clear-history-btn:active {{
+            background: #ffffff;
+            color: #000000;
+        }}
+    "#,
+        fonts::get_gohu_font_face()
+    )
 }

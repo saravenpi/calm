@@ -32,12 +32,14 @@ pub fn get_loading_animation() -> &'static str {
                 }
                 .wave {
                     position: absolute;
-                    border: 2px solid rgba(102, 126, 234, 0.3);
+                    border: 2px solid rgba(255, 255, 255, 0.3);
                     border-radius: 50%;
                     top: 50%;
                     left: 50%;
                     transform: translate(-50%, -50%);
                     animation: pulse 2s ease-in-out infinite;
+                    image-rendering: pixelated;
+                    image-rendering: crisp-edges;
                 }
                 .wave:nth-child(1) { width: 20px; height: 20px; animation-delay: 0s; }
                 .wave:nth-child(2) { width: 40px; height: 40px; animation-delay: 0.15s; }
@@ -50,12 +52,12 @@ pub fn get_loading_animation() -> &'static str {
                     0%, 100% {
                         opacity: 0.2;
                         transform: translate(-50%, -50%) scale(0.95);
-                        border-color: rgba(102, 126, 234, 0.2);
+                        border-color: rgba(255, 255, 255, 0.2);
                     }
                     50% {
                         opacity: 1;
                         transform: translate(-50%, -50%) scale(1.05);
-                        border-color: rgba(102, 126, 234, 0.6);
+                        border-color: rgba(255, 255, 255, 0.8);
                     }
                 }
                 .loader-text {
@@ -63,9 +65,9 @@ pub fn get_loading_animation() -> &'static str {
                     top: 60%;
                     left: 50%;
                     transform: translate(-50%, -50%);
-                    color: rgba(255, 255, 255, 0.6);
+                    color: rgba(255, 255, 255, 0.8);
                     font-size: 13px;
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    font-family: 'gohu', monospace;
                     letter-spacing: 2px;
                     animation: fade 2s ease-in-out infinite;
                 }

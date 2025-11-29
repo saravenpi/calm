@@ -4,7 +4,6 @@ use crate::tabs::TabManager;
 use crate::ui;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::Instant;
 use tao::{dpi::LogicalSize, event_loop::EventLoopWindowTarget, window::WindowBuilder};
 use wry::{Rect, WebView, WebViewBuilder};
 
@@ -20,9 +19,12 @@ pub struct BrowserWindowComponents {
     pub tab_manager: Rc<RefCell<TabManager>>,
     pub tab_bar_webview: Rc<WebView>,
     pub download_overlay: Rc<WebView>,
+    pub command_prompt_overlay: Rc<RefCell<Option<WebView>>>,
+    pub command_prompt_visible: Rc<RefCell<bool>>,
     pub sidebar_visible: Rc<RefCell<bool>>,
     pub should_quit: Rc<RefCell<bool>>,
-    pub last_toggle_downloads_time: Rc<RefCell<Option<Instant>>>,
+    pub toggle_downloads_debouncer: Rc<RefCell<crate::utils::debouncer::Debouncer>>,
+    pub config: Rc<RefCell<Config>>,
 }
 
 /// Creates a new browser window with all necessary components including tab bar, download overlay, and initial tab.
@@ -72,13 +74,14 @@ pub fn create_browser_window<T>(
     let download_overlay_ref: Rc<RefCell<Option<Rc<WebView>>>> = Rc::new(RefCell::new(None));
     let sidebar_visible = Rc::new(RefCell::new(false));
     let should_quit = Rc::new(RefCell::new(false));
-    let last_toggle_downloads_time = Rc::new(RefCell::new(None::<Instant>));
+    let toggle_downloads_debouncer =
+        Rc::new(RefCell::new(crate::utils::debouncer::Debouncer::new(500)));
 
     let window_size = window.inner_size();
 
     let tab_bar_webview = Rc::new(
         WebViewBuilder::new()
-            .with_html(&ui::get_complete_tab_bar_html(config.borrow().ui.vim_mode))
+            .with_html(&ui::get_complete_tab_bar_html(config.borrow().ui.vim_mode, config.borrow().ui.sounds))
             .with_transparent(true)
             .with_bounds(Rect {
                 position: tao::dpi::LogicalPosition::new(0, 0).into(),
@@ -92,7 +95,7 @@ pub fn create_browser_window<T>(
                 let sidebar_visible = Rc::clone(&sidebar_visible);
                 let config = Rc::clone(&config);
                 let should_quit = Rc::clone(&should_quit);
-                let last_toggle_downloads_time = Rc::clone(&last_toggle_downloads_time);
+                let toggle_downloads_debouncer = Rc::clone(&toggle_downloads_debouncer);
                 move |request| {
                     let body = request.body();
 
@@ -177,32 +180,28 @@ pub fn create_browser_window<T>(
                             Some("navigate_forward") => {
                                 tab_manager.borrow().navigate_forward();
                             }
+                            Some("inspect_element") => {
+                                tab_manager.borrow_mut().open_devtools_for_active_tab(&window);
+                            }
+                            Some("inspect_element_tab") => {
+                                if let Some(tab_id) = data["tabId"].as_u64() {
+                                    tab_manager.borrow_mut().open_devtools_for_tab(tab_id as usize, &window);
+                                }
+                            }
                             Some("toggle_downloads") => {
-                                let now = Instant::now();
-                                let should_execute = {
-                                    let mut last_time = last_toggle_downloads_time.borrow_mut();
-                                    if let Some(last) = *last_time {
-                                        let elapsed = now.duration_since(last).as_millis();
-                                        if elapsed < 250 {
-                                            debug_log!("IPC toggle_downloads DEBOUNCED - only {}ms since last, IGNORING", elapsed);
-                                            false
-                                        } else {
-                                            *last_time = Some(now);
-                                            true
-                                        }
-                                    } else {
-                                        *last_time = Some(now);
-                                        true
-                                    }
-                                };
-
-                                if should_execute {
+                                if toggle_downloads_debouncer.borrow_mut().should_execute() {
                                     debug_log!("=== IPC toggle_downloads FIRED ===");
-                                    let mut is_visible = sidebar_visible.borrow_mut();
-                                    *is_visible = !*is_visible;
+
+                                    let should_show = {
+                                        let mut is_visible = sidebar_visible.borrow_mut();
+                                        *is_visible = !*is_visible;
+                                        debug_log!("Download manager sidebar_visible toggled to: {}", *is_visible);
+                                        *is_visible
+                                    };
 
                                     if let Some(ref overlay) = *download_overlay_ref.borrow() {
-                                        if *is_visible {
+                                        if should_show {
+                                            debug_log!("Opening download manager");
                                             let _ = overlay.set_visible(true);
                                             std::thread::sleep(std::time::Duration::from_millis(10));
                                             let script = "window.toggleVisibility(true);";
@@ -212,6 +211,7 @@ pub fn create_browser_window<T>(
                                                 DOWNLOAD_SIDEBAR_WIDTH as u32,
                                             );
                                         } else {
+                                            debug_log!("Closing download manager");
                                             let script = "window.toggleVisibility(false);";
                                             let _ = overlay.evaluate_script(script);
                                             std::thread::sleep(std::time::Duration::from_millis(300));
@@ -220,6 +220,23 @@ pub fn create_browser_window<T>(
                                         }
                                     }
                                 }
+                            }
+                            Some("reveal_in_finder") => {
+                                if let Some(file_path) = data["filePath"].as_str() {
+                                    debug_log!("Revealing in Finder: {}", file_path);
+                                    #[cfg(target_os = "macos")]
+                                    {
+                                        use std::process::Command;
+                                        let _ = Command::new("open")
+                                            .arg("-R")
+                                            .arg(file_path)
+                                            .spawn();
+                                    }
+                                }
+                            }
+                            Some("clear_download_history") => {
+                                debug_log!("Clearing download history");
+                                tab_manager.borrow_mut().clear_download_history();
                             }
                             Some("focus_url_bar") => {
                                 let script = "const urlBar = document.getElementById('url-bar'); if (urlBar) { urlBar.focus(); urlBar.select(); }";
@@ -251,6 +268,7 @@ pub fn create_browser_window<T>(
                                         "defaultUrl": cfg.default_url,
                                         "searchEngine": cfg.search_engine,
                                         "vimMode": cfg.ui.vim_mode,
+                                        "uiSounds": cfg.ui.sounds,
                                         "blockTrackers": cfg.privacy.tracking_domain_blocking,
                                         "blockFingerprinting": cfg.privacy.canvas_fingerprint_protection,
                                         "blockCookies": true,
@@ -290,6 +308,12 @@ pub fn create_browser_window<T>(
                                         debug_log!("Setting vim_mode to: {}", vim_mode);
                                         cfg.ui.vim_mode = vim_mode;
                                     }
+                                    if let Some(ui_sounds) =
+                                        settings.get("uiSounds").and_then(|v| v.as_bool())
+                                    {
+                                        debug_log!("Setting ui_sounds to: {}", ui_sounds);
+                                        cfg.ui.sounds = ui_sounds;
+                                    }
                                     if let Some(block_trackers) =
                                         settings.get("blockTrackers").and_then(|v| v.as_bool())
                                     {
@@ -308,6 +332,20 @@ pub fn create_browser_window<T>(
                                     match cfg.save() {
                                         Ok(_) => debug_log!("Settings saved successfully to ~/.calm.yml"),
                                         Err(e) => debug_log!("ERROR: Failed to save settings: {:?}", e),
+                                    }
+
+                                    if let Some(ui_sounds) =
+                                        settings.get("uiSounds").and_then(|v| v.as_bool())
+                                    {
+                                        let script = if ui_sounds {
+                                            "window.uiSoundsEnabled = true;"
+                                        } else {
+                                            "window.uiSoundsEnabled = false; window.playUISound = function() {};"
+                                        };
+                                        if let Some(webview) = tab_bar_webview_ref.borrow().as_ref() {
+                                            let _ = webview.evaluate_script(script);
+                                            debug_log!("Updated UI sounds setting to: {}", ui_sounds);
+                                        }
                                     }
                                 } else {
                                     debug_log!("ERROR: No settings object in save_settings message");
@@ -377,6 +415,109 @@ pub fn create_browser_window<T>(
                                 debug_log!("=== IPC swap_split_panes action received ===");
                                 tab_manager.borrow_mut().swap_split_panes();
                             }
+                            Some("keyboard_shortcut") => {
+                                if let Some(shortcut) = data["shortcut"].as_str() {
+                                    debug_log!("=== IPC keyboard_shortcut '{}' received ===", shortcut);
+                                    match shortcut {
+                                        "reload" => {
+                                            tab_manager.borrow().reload_active_tab();
+                                        }
+                                        "focus_url" => {
+                                            let script = "const urlBar = document.getElementById('url-bar'); if (urlBar) { urlBar.focus(); urlBar.select(); }";
+                                            if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
+                                                let _ = webview.evaluate_script(script);
+                                            }
+                                        }
+                                        "toggle_downloads" => {
+                                            if toggle_downloads_debouncer.borrow_mut().should_execute() {
+                                                let should_show = {
+                                                    let mut is_visible = sidebar_visible.borrow_mut();
+                                                    *is_visible = !*is_visible;
+                                                    *is_visible
+                                                };
+
+                                                if let Some(ref overlay) = *download_overlay_ref.borrow() {
+                                                    if should_show {
+                                                        let _ = overlay.set_visible(true);
+                                                        std::thread::sleep(std::time::Duration::from_millis(10));
+                                                        let script = "window.toggleVisibility(true);";
+                                                        let _ = overlay.evaluate_script(script);
+                                                        tab_manager.borrow_mut().resize_all_tabs_with_sidebar(
+                                                            &window,
+                                                            DOWNLOAD_SIDEBAR_WIDTH as u32,
+                                                        );
+                                                    } else {
+                                                        let script = "window.toggleVisibility(false);";
+                                                        let _ = overlay.evaluate_script(script);
+                                                        std::thread::sleep(std::time::Duration::from_millis(300));
+                                                        let _ = overlay.set_visible(false);
+                                                        tab_manager.borrow_mut().resize_all_tabs(&window);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        "focus_sidebar" => {
+                                            if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
+                                                let _ = webview.focus();
+                                                let script = "window.showSidebarFocus(); if (window.tabs.length > 0) { if (window.focusedTabIndex < 0) { window.updateFocusedTab(0); } else { window.updateFocusedTab(window.focusedTabIndex); } }";
+                                                let _ = webview.evaluate_script(script);
+                                            }
+                                        }
+                                        "find" => {
+                                            if let Some(active_webview) = tab_manager.borrow().get_active_tab_webview() {
+                                                let _ = active_webview.evaluate_script("window.calmStartSearch();");
+                                            }
+                                        }
+                                        "new_tab" => {
+                                            let default_url = crate::convert_file_url(&config.borrow().default_url);
+                                            let tab_result = tab_manager.borrow_mut().create_tab(&window, &default_url);
+                                            if let Ok(tab_id) = tab_result {
+                                                tab_manager.borrow_mut().switch_to_tab(tab_id);
+                                                if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
+                                                    let escaped_url = serde_json::to_string(&default_url).unwrap_or_else(|_| "\"\"".to_string());
+                                                    let script = format!(
+                                                        "window.addTab({}, {}); window.setActiveTab({}); window.updateUrlBar({});",
+                                                        tab_id, escaped_url, tab_id, escaped_url
+                                                    );
+                                                    let _ = webview.evaluate_script(&script);
+                                                }
+                                            }
+                                        }
+                                        "close_tab" => {
+                                            let tab_count = tab_manager.borrow().get_tab_count();
+                                            if tab_count <= 1 {
+                                                *should_quit.borrow_mut() = true;
+                                            } else {
+                                                let active_tab_id = tab_manager.borrow().get_active_tab_id();
+                                                if let Some(active_tab_id) = active_tab_id {
+                                                    tab_manager.borrow_mut().close_tab(active_tab_id);
+                                                    if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
+                                                        let script = format!("window.removeTab({});", active_tab_id);
+                                                        let _ = webview.evaluate_script(&script);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        "new_window" => {
+                                            debug_log!("New window shortcut not supported from IPC (requires event loop)");
+                                        }
+                                        "toggle_split_view" => {
+                                            let _ = tab_manager.borrow_mut().toggle_split_view(&window);
+                                            if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
+                                                let enabled = tab_manager.borrow().is_split_view_enabled();
+                                                let script = format!("if (window.updateSplitViewButtons) {{ window.updateSplitViewButtons({}); }}", enabled);
+                                                let _ = webview.evaluate_script(&script);
+                                            }
+                                        }
+                                        "quit" => {
+                                            *should_quit.borrow_mut() = true;
+                                        }
+                                        _ => {
+                                            debug_log!("Unknown keyboard shortcut: {}", shortcut);
+                                        }
+                                    }
+                                }
+                            }
                             _ => {}
                         }
                     }
@@ -399,11 +540,8 @@ pub fn create_browser_window<T>(
                     0,
                 )
                 .into(),
-                size: tao::dpi::LogicalSize::new(
-                    DOWNLOAD_SIDEBAR_WIDTH as u32,
-                    window_size.height,
-                )
-                .into(),
+                size: tao::dpi::LogicalSize::new(DOWNLOAD_SIDEBAR_WIDTH as u32, window_size.height)
+                    .into(),
             })
             .with_visible(false)
             .build_as_child(window.as_ref())?,
@@ -413,6 +551,23 @@ pub fn create_browser_window<T>(
     tab_manager
         .borrow_mut()
         .set_download_overlay(Rc::clone(&download_overlay));
+
+    {
+        let manager = tab_manager.borrow();
+        let history = manager.get_download_history();
+        if !history.downloads.is_empty() {
+            let downloads_json =
+                serde_json::to_string(&history.downloads).unwrap_or_else(|_| "[]".to_string());
+            let script = format!(
+                "if (window.loadDownloadHistory) {{ window.loadDownloadHistory({}); }}",
+                downloads_json
+            );
+            let _ = download_overlay.evaluate_script(&script);
+            debug_log!("Loaded {} downloads from history", history.downloads.len());
+        }
+    }
+
+    let command_prompt_visible = Rc::new(RefCell::new(false));
 
     {
         let mut manager = tab_manager.borrow_mut();
@@ -453,9 +608,11 @@ pub fn create_browser_window<T>(
         tab_manager,
         tab_bar_webview,
         download_overlay,
+        command_prompt_overlay: Rc::new(RefCell::new(None)),
+        command_prompt_visible,
         sidebar_visible,
         should_quit,
-        last_toggle_downloads_time,
+        toggle_downloads_debouncer,
+        config,
     })
 }
-

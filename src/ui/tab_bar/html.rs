@@ -1,69 +1,41 @@
 pub fn get_tab_bar_html_structure() -> &'static str {
     r#"
     <div class="control-group">
-        <button class="back-btn" id="back-btn" onclick="window.ipc.postMessage(JSON.stringify({action: 'navigate_back'}))" title="Back" disabled>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" shape-rendering="crispEdges">
-                <rect x="8" y="4" width="2" height="2"/>
-                <rect x="6" y="6" width="2" height="2"/>
-                <rect x="4" y="8" width="2" height="2"/>
-                <rect x="6" y="10" width="2" height="2"/>
-                <rect x="8" y="12" width="2" height="2"/>
-                <rect x="8" y="6" width="6" height="2"/>
-                <rect x="8" y="10" width="6" height="2"/>
+        <button class="back-btn" id="back-btn" onclick="playUISound('cursorMove'); window.ipc.postMessage(JSON.stringify({action: 'navigate_back'}))" title="Back (Cmd+[)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
+                <path d="M20 11v2H8v2H6v-2H4v-2h2V9h2v2h12zM10 7H8v2h2V7zm0 0h2V5h-2v2zm0 10H8v-2h2v2zm0 0h2v2h-2v-2z"/>
             </svg>
         </button>
-        <button class="forward-btn" id="forward-btn" onclick="window.ipc.postMessage(JSON.stringify({action: 'navigate_forward'}))" title="Forward" disabled>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" shape-rendering="crispEdges">
-                <rect x="6" y="4" width="2" height="2"/>
-                <rect x="8" y="6" width="2" height="2"/>
-                <rect x="10" y="8" width="2" height="2"/>
-                <rect x="8" y="10" width="2" height="2"/>
-                <rect x="6" y="12" width="2" height="2"/>
-                <rect x="2" y="6" width="6" height="2"/>
-                <rect x="2" y="10" width="6" height="2"/>
+        <button class="forward-btn" id="forward-btn" onclick="playUISound('cursorMove'); window.ipc.postMessage(JSON.stringify({action: 'navigate_forward'}))" title="Forward (Cmd+])">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
+                <path d="M4 11v2h12v2h2v-2h2v-2h-2V9h-2v2H4zm10-4h2v2h-2V7zm0 0h-2V5h2v2zm0 10h2v-2h-2v2zm0 0h-2v2h2v-2z"/>
             </svg>
         </button>
-        <button class="reload-btn" id="reload-btn" onclick="window.ipc.postMessage(JSON.stringify({action: 'reload_tab'}))" title="Reload (Cmd+R)">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" shape-rendering="crispEdges">
-                <rect x="4" y="2" width="6" height="2"/>
-                <rect x="10" y="4" width="2" height="2"/>
-                <rect x="12" y="6" width="2" height="2"/>
-                <rect x="12" y="8" width="2" height="2"/>
-                <rect x="10" y="10" width="2" height="2"/>
-                <rect x="4" y="12" width="6" height="2"/>
-                <rect x="2" y="10" width="2" height="2"/>
-                <rect x="2" y="6" width="2" height="2"/>
-                <rect x="2" y="4" width="2" height="2"/>
-                <rect x="10" y="2" width="2" height="2"/>
-                <rect x="12" y="10" width="2" height="2"/>
+        <button class="reload-btn" id="reload-btn" onclick="playUISound('cursorMove'); window.ipc.postMessage(JSON.stringify({action: 'reload_tab'}))" title="Reload (Cmd+R)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
+                <path d="M16 2h-2v2h2v2H4v2H2v5h2V8h12v2h-2v2h2v-2h2V8h2V6h-2V4h-2V2zM6 20h2v2h2v-2H8v-2h12v-2h2v-5h-2v5H8v-2h2v-2H8v2H6v2H4v2h2v2z"/>
             </svg>
         </button>
-        <button class="new-tab-btn" onclick="handleNewTab()" title="New Tab (Cmd+T)">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" shape-rendering="crispEdges">
-                <rect x="7" y="2" width="2" height="12"/>
-                <rect x="2" y="7" width="12" height="2"/>
+        <button class="new-tab-btn" onclick="playUISound('cursorMove'); handleNewTab()" title="New Tab (Cmd+T)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
+                <path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7V4z"/>
             </svg>
         </button>
-        <button class="split-view-btn" id="split-view-btn" onclick="window.ipc.postMessage(JSON.stringify({action: 'toggle_split_view'}))" title="Toggle Split View (Cmd+Shift+S)">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" shape-rendering="crispEdges">
-                <rect x="2" y="2" width="5" height="12"/>
-                <rect x="9" y="2" width="5" height="12"/>
+    </div>
+    <div class="split-view-controls">
+        <button class="split-view-btn" id="split-view-btn" onclick="playUISound('cursorMove'); window.ipc.postMessage(JSON.stringify({action: 'toggle_split_view'}))" title="Toggle Split View (Cmd+Shift+S)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
+                <path d="M2 2h20v20H2V2zm2 2v4h4V4H4zm6 0v4h4V4h-4zm6 0v4h4V4h-4zm4 6h-4v4h4v-4zm0 6h-4v4h4v-4zm-6 4v-4h-4v4h4zm-6 0v-4H4v4h4zm-4-6h4v-4H4v4zm6-4v4h4v-4h-4z"/>
             </svg>
         </button>
         <button class="split-orientation-btn" id="split-orientation-btn" onclick="window.ipc.postMessage(JSON.stringify({action: 'toggle_split_orientation'}))" title="Toggle Split Orientation" style="display: none;">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" shape-rendering="crispEdges">
-                <rect x="2" y="2" width="12" height="5"/>
-                <rect x="2" y="9" width="12" height="5"/>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
+                <path d="M2 2h20v20H2V2zm2 2v4h4V4H4zm6 0v4h4V4h-4zm6 0v4h4V4h-4zm4 6h-4v4h4v-4zm0 6h-4v4h4v-4zm-6 4v-4h-4v4h4zm-6 0v-4H4v4h4zm-4-6h4v-4H4v4zm6-4v4h4v-4h-4z"/>
             </svg>
         </button>
         <button class="swap-panes-btn" id="swap-panes-btn" onclick="window.ipc.postMessage(JSON.stringify({action: 'swap_split_panes'}))" title="Swap Panes" style="display: none;">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" shape-rendering="crispEdges">
-                <rect x="2" y="7" width="4" height="2"/>
-                <rect x="6" y="5" width="2" height="2"/>
-                <rect x="6" y="9" width="2" height="2"/>
-                <rect x="10" y="7" width="4" height="2"/>
-                <rect x="8" y="3" width="2" height="2"/>
-                <rect x="8" y="11" width="2" height="2"/>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
+                <path d="M16 2h-2v2h2v2H4v2H2v5h2V8h12v2h-2v2h2v-2h2V8h2V6h-2V4h-2V2zM6 20h2v2h2v-2H8v-2h12v-2h2v-5h-2v5H8v-2h2v-2H8v2H6v2H4v2h2v2z"/>
             </svg>
         </button>
     </div>
@@ -71,28 +43,15 @@ pub fn get_tab_bar_html_structure() -> &'static str {
         <input type="text" class="url-bar" id="url-bar" placeholder="search or enter address" />
     </div>
     <div class="bottom-controls">
-        <button class="downloads-btn" id="downloads-btn" onclick="toggleDownloads()" title="Downloads">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" shape-rendering="crispEdges">
-                <rect x="7" y="2" width="2" height="8"/>
-                <rect x="5" y="8" width="2" height="2"/>
-                <rect x="9" y="8" width="2" height="2"/>
-                <rect x="3" y="10" width="2" height="2"/>
-                <rect x="11" y="10" width="2" height="2"/>
-                <rect x="2" y="12" width="12" height="2"/>
+        <button class="downloads-btn" id="downloads-btn" onclick="playUISound('cursorMove'); toggleDownloads()" title="Downloads">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
+                <path d="M13 17V3h-2v10H9v-2H7v2h2v2h2v2h2zm8 2v-4h-2v4H5v-4H3v6h18v-2zm-8-6v2h2v-2h2v-2h-2v2h-2z"/>
             </svg>
             <span class="download-badge" id="download-badge" style="display: none;">0</span>
         </button>
-        <button class="settings-btn" id="settings-btn" onclick="openSettings()" title="Settings">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" shape-rendering="crispEdges">
-                <rect x="7" y="0" width="2" height="2"/>
-                <rect x="7" y="14" width="2" height="2"/>
-                <rect x="0" y="7" width="2" height="2"/>
-                <rect x="14" y="7" width="2" height="2"/>
-                <rect x="3" y="3" width="2" height="2"/>
-                <rect x="11" y="3" width="2" height="2"/>
-                <rect x="3" y="11" width="2" height="2"/>
-                <rect x="11" y="11" width="2" height="2"/>
-                <rect x="6" y="6" width="4" height="4"/>
+        <button class="settings-btn" id="settings-btn" onclick="playUISound('cursorMove'); openSettings()" title="Settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
+                <path d="M17 4h2v10h-2V4zm0 12h-2v2h2v2h2v-2h2v-2h-4zm-4-6h-2v10h2V10zm-8 2H3v2h2v6h2v-6h2v-2H5zm8-8h-2v2H9v2h6V6h-2V4zM5 4h2v6H5V4z"/>
             </svg>
         </button>
     </div>
