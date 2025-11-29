@@ -89,25 +89,42 @@ These three steps should be run after every change to ensure both the desktop ap
   - `manager.rs`: Multi-window lifecycle management
 - **`src/url_cleaner.rs`**: URL tracking parameter removal and YouTube redirects
 - **`src/vimium_hints.rs`**: Vim-style keyboard navigation
+- **`src/shortcuts/`**: Keyboard shortcuts system
+  - `mod.rs`: Shortcut definitions and handling logic
+- **`src/single_instance.rs`**: Single-instance browser enforcement via Unix sockets
 
 ### Key Patterns
 
-1. **IPC Communication**: Tab bar and tabs communicate via JSON messages through WRY's IPC system
+1. **Native Keyboard Shortcuts**: Professional keyboard shortcut system using native macOS menus
+   - **Architecture**: Uses `muda` crate for native menu items with OS-level accelerators
+   - **Why**: WKWebView captures all keyboard events when focused, preventing traditional event handlers
+   - **Solution**: Native menu accelerators work at OS level, before WKWebView can intercept
+   - **Location**: Menu creation in `src/main.rs`, event handling in main event loop
+   - **Configuration**: All shortcuts customizable in `~/.calm.yml` under `ui.shortcuts`
+   - **Menus**: File (New Tab, New Window, Close), Edit (standard), View (Reload, Downloads, Split View), Navigate (URL, Sidebar, Find)
+   - **No JavaScript**: Removed JavaScript keyboard handler workarounds - native menus handle everything
+   - **Best Practice**: This is how all professional browsers implement keyboard shortcuts
+
+2. **IPC Communication**: Tab bar and tabs communicate via JSON messages through WRY's IPC system
    - IPC handlers are defined in `window/builder.rs` for tab bar actions
    - Individual tab IPC handlers are in `tabs/manager.rs`
    - Actions: `new_tab`, `close_tab`, `switch_tab`, `navigate_back`, `navigate_forward`, `inspect_element`, `update_title`, `update_url`, etc.
 
-2. **Privacy Scripts**: JavaScript code is injected before page load via `WebViewBuilder::with_initialization_script()`
+3. **Privacy Scripts**: JavaScript code is injected before page load via `WebViewBuilder::with_initialization_script()`
    - Scripts are conditionally enabled based on `PrivacySettings` in `~/.calm.yml`
    - All scripts use IIFE pattern to avoid polluting global scope
 
-3. **State Management**: Uses `Rc<RefCell<T>>` for shared mutable state
+4. **State Management**: Uses `Rc<RefCell<T>>` for shared mutable state
    - `TabManager`, `Config`, sidebar visibility, etc.
    - Avoids complex async/await patterns for simplicity
 
-4. **Custom Protocol**: `calmfile://localhost` for local file access
+5. **Custom Protocol**: `calmfile://localhost` for local file access
    - Converts `file://` URLs internally
    - Proper MIME type detection using `infer` crate
+
+6. **Single Instance**: Unix socket-based IPC ensures only one Calm instance runs
+   - New URLs sent to existing instance open as tabs
+   - Prevents window proliferation
 
 ## Configuration
 

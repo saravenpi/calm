@@ -13,7 +13,7 @@ mod utils;
 mod vimium_hints;
 mod window;
 
-use muda::{Menu, PredefinedMenuItem, Submenu};
+use muda::{Menu, MenuItem, PredefinedMenuItem, Submenu, accelerator::Accelerator};
 use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Instant};
 use tao::{
     event::{ElementState, Event, WindowEvent},
@@ -128,8 +128,34 @@ fn main() -> wry::Result<()> {
     let event_loop = EventLoop::new();
 
     #[cfg(target_os = "macos")]
-    {
+    let menu_items = {
         let menu_bar = Menu::new();
+
+        let file_menu = Submenu::new("File", true);
+        let new_tab_item = MenuItem::new(
+            "New Tab",
+            true,
+            Some(Accelerator::new(Some(muda::accelerator::Modifiers::SUPER), muda::accelerator::Code::KeyT)),
+        );
+        let new_window_item = MenuItem::new(
+            "New Window",
+            true,
+            Some(Accelerator::new(Some(muda::accelerator::Modifiers::SUPER), muda::accelerator::Code::KeyN)),
+        );
+        let close_tab_item = MenuItem::new(
+            "Close Tab",
+            true,
+            Some(Accelerator::new(Some(muda::accelerator::Modifiers::SUPER), muda::accelerator::Code::KeyW)),
+        );
+
+        file_menu
+            .append_items(&[
+                &new_tab_item,
+                &new_window_item,
+                &PredefinedMenuItem::separator(),
+                &close_tab_item,
+            ])
+            .expect("Failed to append File menu items");
 
         let edit_menu = Submenu::new("Edit", true);
         edit_menu
@@ -142,11 +168,84 @@ fn main() -> wry::Result<()> {
             ])
             .expect("Failed to append Edit menu items");
 
+        let view_menu = Submenu::new("View", true);
+        let reload_item = MenuItem::new(
+            "Reload",
+            true,
+            Some(Accelerator::new(Some(muda::accelerator::Modifiers::SUPER), muda::accelerator::Code::KeyR)),
+        );
+        let toggle_downloads_item = MenuItem::new(
+            "Toggle Downloads",
+            true,
+            Some(Accelerator::new(Some(muda::accelerator::Modifiers::SUPER), muda::accelerator::Code::KeyJ)),
+        );
+        let toggle_split_view_item = MenuItem::new(
+            "Toggle Split View",
+            true,
+            Some(Accelerator::new(Some(muda::accelerator::Modifiers::SUPER | muda::accelerator::Modifiers::SHIFT), muda::accelerator::Code::KeyS)),
+        );
+
+        view_menu
+            .append_items(&[
+                &reload_item,
+                &PredefinedMenuItem::separator(),
+                &toggle_downloads_item,
+                &toggle_split_view_item,
+            ])
+            .expect("Failed to append View menu items");
+
+        let navigate_menu = Submenu::new("Navigate", true);
+        let focus_url_item = MenuItem::new(
+            "Focus URL Bar",
+            true,
+            Some(Accelerator::new(Some(muda::accelerator::Modifiers::SUPER), muda::accelerator::Code::KeyL)),
+        );
+        let focus_sidebar_item = MenuItem::new(
+            "Focus Sidebar",
+            true,
+            Some(Accelerator::new(Some(muda::accelerator::Modifiers::SUPER), muda::accelerator::Code::KeyE)),
+        );
+        let find_item = MenuItem::new(
+            "Find in Page",
+            true,
+            Some(Accelerator::new(Some(muda::accelerator::Modifiers::SUPER), muda::accelerator::Code::KeyF)),
+        );
+
+        navigate_menu
+            .append_items(&[
+                &focus_url_item,
+                &focus_sidebar_item,
+                &PredefinedMenuItem::separator(),
+                &find_item,
+            ])
+            .expect("Failed to append Navigate menu items");
+
+        menu_bar
+            .append(&file_menu)
+            .expect("Failed to append File menu");
         menu_bar
             .append(&edit_menu)
             .expect("Failed to append Edit menu");
+        menu_bar
+            .append(&view_menu)
+            .expect("Failed to append View menu");
+        menu_bar
+            .append(&navigate_menu)
+            .expect("Failed to append Navigate menu");
         menu_bar.init_for_nsapp();
-    }
+
+        (
+            new_tab_item,
+            new_window_item,
+            close_tab_item,
+            reload_item,
+            toggle_downloads_item,
+            toggle_split_view_item,
+            focus_url_item,
+            focus_sidebar_item,
+            find_item,
+        )
+    };
 
     let (initial_url, use_welcome_html) = if args.is_empty() {
         (convert_file_url(&config.default_url), false)
@@ -202,6 +301,108 @@ fn main() -> wry::Result<()> {
 
     event_loop.run(move |event, event_loop_target, control_flow| {
         *control_flow = ControlFlow::Wait;
+
+        #[cfg(target_os = "macos")]
+        if let Ok(menu_event) = muda::MenuEvent::receiver().try_recv() {
+            debug_log!("Menu event received: {:?}", menu_event.id());
+
+            if let Some(focused_id) = *focused_window_id.borrow() {
+                let windows = windows_ref.borrow();
+                if let Some(components) = windows.get(&focused_id) {
+                    if menu_event.id() == menu_items.0.id() {
+                        shortcut_manager.handle_shortcut(
+                            shortcuts::Shortcut::NewTab,
+                            components,
+                            &config,
+                            event_loop_target,
+                            &windows_ref,
+                            &focused_window_id,
+                            control_flow,
+                        );
+                    } else if menu_event.id() == menu_items.1.id() {
+                        shortcut_manager.handle_shortcut(
+                            shortcuts::Shortcut::NewWindow,
+                            components,
+                            &config,
+                            event_loop_target,
+                            &windows_ref,
+                            &focused_window_id,
+                            control_flow,
+                        );
+                    } else if menu_event.id() == menu_items.2.id() {
+                        shortcut_manager.handle_shortcut(
+                            shortcuts::Shortcut::CloseTab,
+                            components,
+                            &config,
+                            event_loop_target,
+                            &windows_ref,
+                            &focused_window_id,
+                            control_flow,
+                        );
+                    } else if menu_event.id() == menu_items.3.id() {
+                        shortcut_manager.handle_shortcut(
+                            shortcuts::Shortcut::Reload,
+                            components,
+                            &config,
+                            event_loop_target,
+                            &windows_ref,
+                            &focused_window_id,
+                            control_flow,
+                        );
+                    } else if menu_event.id() == menu_items.4.id() {
+                        shortcut_manager.handle_shortcut(
+                            shortcuts::Shortcut::ToggleDownloads,
+                            components,
+                            &config,
+                            event_loop_target,
+                            &windows_ref,
+                            &focused_window_id,
+                            control_flow,
+                        );
+                    } else if menu_event.id() == menu_items.5.id() {
+                        shortcut_manager.handle_shortcut(
+                            shortcuts::Shortcut::ToggleSplitView,
+                            components,
+                            &config,
+                            event_loop_target,
+                            &windows_ref,
+                            &focused_window_id,
+                            control_flow,
+                        );
+                    } else if menu_event.id() == menu_items.6.id() {
+                        shortcut_manager.handle_shortcut(
+                            shortcuts::Shortcut::FocusUrlBar,
+                            components,
+                            &config,
+                            event_loop_target,
+                            &windows_ref,
+                            &focused_window_id,
+                            control_flow,
+                        );
+                    } else if menu_event.id() == menu_items.7.id() {
+                        shortcut_manager.handle_shortcut(
+                            shortcuts::Shortcut::FocusSidebar,
+                            components,
+                            &config,
+                            event_loop_target,
+                            &windows_ref,
+                            &focused_window_id,
+                            control_flow,
+                        );
+                    } else if menu_event.id() == menu_items.8.id() {
+                        shortcut_manager.handle_shortcut(
+                            shortcuts::Shortcut::Find,
+                            components,
+                            &config,
+                            event_loop_target,
+                            &windows_ref,
+                            &focused_window_id,
+                            control_flow,
+                        );
+                    }
+                }
+            }
+        }
 
         if let Some(ref receiver) = url_receiver {
             while let Ok(url) = receiver.try_recv() {

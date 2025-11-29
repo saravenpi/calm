@@ -397,13 +397,11 @@ console.log('[INIT] Console override installed');
                 );
                 drop(cfg);
 
-                let keyboard_handler = crate::ui::get_keyboard_handler_script();
-                let combined_script = format!("{}\n{}\n{}\n{}\n{}\n{}", console_override, link_interception, safe_privacy_script, vimium_script, settings_init_script, keyboard_handler);
-                debug_log!("Initialization script size: {} bytes (console: ~600, privacy: ~{}, vimium: {}, keyboard: {})",
+                let combined_script = format!("{}\n{}\n{}\n{}\n{}", console_override, link_interception, safe_privacy_script, vimium_script, settings_init_script);
+                debug_log!("Initialization script size: {} bytes (console: ~600, privacy: ~{}, vimium: {})",
                     combined_script.len(),
                     safe_privacy_script.len(),
-                    vimium_script.len(),
-                    keyboard_handler.len()
+                    vimium_script.len()
                 );
 
                 combined_script

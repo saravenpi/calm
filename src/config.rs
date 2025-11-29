@@ -48,6 +48,82 @@ fn default_true() -> bool {
     true
 }
 
+/// Keyboard shortcut configuration.
+/// All shortcuts use Cmd on macOS and Ctrl on other platforms.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyboardShortcuts {
+    #[serde(default = "default_shortcut_new_tab")]
+    pub new_tab: String,
+    #[serde(default = "default_shortcut_close_tab")]
+    pub close_tab: String,
+    #[serde(default = "default_shortcut_reload")]
+    pub reload: String,
+    #[serde(default = "default_shortcut_focus_url")]
+    pub focus_url: String,
+    #[serde(default = "default_shortcut_toggle_downloads")]
+    pub toggle_downloads: String,
+    #[serde(default = "default_shortcut_focus_sidebar")]
+    pub focus_sidebar: String,
+    #[serde(default = "default_shortcut_find")]
+    pub find: String,
+    #[serde(default = "default_shortcut_new_window")]
+    pub new_window: String,
+    #[serde(default = "default_shortcut_toggle_split_view")]
+    pub toggle_split_view: String,
+}
+
+fn default_shortcut_new_tab() -> String {
+    "Cmd+T".to_string()
+}
+
+fn default_shortcut_close_tab() -> String {
+    "Cmd+W".to_string()
+}
+
+fn default_shortcut_reload() -> String {
+    "Cmd+R".to_string()
+}
+
+fn default_shortcut_focus_url() -> String {
+    "Cmd+L".to_string()
+}
+
+fn default_shortcut_toggle_downloads() -> String {
+    "Cmd+J".to_string()
+}
+
+fn default_shortcut_focus_sidebar() -> String {
+    "Cmd+E".to_string()
+}
+
+fn default_shortcut_find() -> String {
+    "Cmd+F".to_string()
+}
+
+fn default_shortcut_new_window() -> String {
+    "Cmd+N".to_string()
+}
+
+fn default_shortcut_toggle_split_view() -> String {
+    "Cmd+Shift+S".to_string()
+}
+
+impl Default for KeyboardShortcuts {
+    fn default() -> Self {
+        Self {
+            new_tab: default_shortcut_new_tab(),
+            close_tab: default_shortcut_close_tab(),
+            reload: default_shortcut_reload(),
+            focus_url: default_shortcut_focus_url(),
+            toggle_downloads: default_shortcut_toggle_downloads(),
+            focus_sidebar: default_shortcut_focus_sidebar(),
+            find: default_shortcut_find(),
+            new_window: default_shortcut_new_window(),
+            toggle_split_view: default_shortcut_toggle_split_view(),
+        }
+    }
+}
+
 /// UI-related configuration settings for the browser interface.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UiSettings {
@@ -57,6 +133,8 @@ pub struct UiSettings {
     pub debug: bool,
     #[serde(default = "default_true")]
     pub sounds: bool,
+    #[serde(default)]
+    pub shortcuts: KeyboardShortcuts,
 }
 
 /// Default value function for boolean fields (returns false).
@@ -70,6 +148,7 @@ impl Default for UiSettings {
             vim_mode: true,
             debug: false,
             sounds: true,
+            shortcuts: KeyboardShortcuts::default(),
         }
     }
 }

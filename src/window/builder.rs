@@ -76,6 +76,8 @@ pub fn create_browser_window<T>(
     let should_quit = Rc::new(RefCell::new(false));
     let toggle_downloads_debouncer =
         Rc::new(RefCell::new(crate::utils::debouncer::Debouncer::new(500)));
+    let command_prompt_visible = Rc::new(RefCell::new(false));
+    let command_prompt_overlay_ref: Rc<RefCell<Option<WebView>>> = Rc::new(RefCell::new(None));
 
     let window_size = window.inner_size();
 
@@ -96,6 +98,8 @@ pub fn create_browser_window<T>(
                 let config = Rc::clone(&config);
                 let should_quit = Rc::clone(&should_quit);
                 let toggle_downloads_debouncer = Rc::clone(&toggle_downloads_debouncer);
+                let command_prompt_visible = Rc::clone(&command_prompt_visible);
+                let command_prompt_overlay_ref = Rc::clone(&command_prompt_overlay_ref);
                 move |request| {
                     let body = request.body();
 
@@ -469,17 +473,88 @@ pub fn create_browser_window<T>(
                                             }
                                         }
                                         "new_tab" => {
-                                            let default_url = crate::convert_file_url(&config.borrow().default_url);
-                                            let tab_result = tab_manager.borrow_mut().create_tab(&window, &default_url);
-                                            if let Ok(tab_id) = tab_result {
-                                                tab_manager.borrow_mut().switch_to_tab(tab_id);
-                                                if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
-                                                    let escaped_url = serde_json::to_string(&default_url).unwrap_or_else(|_| "\"\"".to_string());
-                                                    let script = format!(
-                                                        "window.addTab({}, {}); window.setActiveTab({}); window.updateUrlBar({});",
-                                                        tab_id, escaped_url, tab_id, escaped_url
-                                                    );
-                                                    let _ = webview.evaluate_script(&script);
+                                            let is_visible = *command_prompt_visible.borrow();
+
+                                            if is_visible {
+                                                *command_prompt_visible.borrow_mut() = false;
+                                                *command_prompt_overlay_ref.borrow_mut() = None;
+                                            } else {
+                                                let window_size = window.inner_size();
+                                                let command_prompt_visible_for_ipc = Rc::clone(&command_prompt_visible);
+                                                let command_prompt_overlay_for_ipc = Rc::clone(&command_prompt_overlay_ref);
+                                                let tab_manager_for_prompt = Rc::clone(&tab_manager);
+                                                let config_for_prompt = Rc::clone(&config);
+                                                let window_for_prompt = Rc::clone(&window);
+                                                let tab_bar_for_prompt = Rc::clone(&tab_bar_webview_ref);
+
+                                                match wry::WebViewBuilder::new()
+                                                    .with_html(&ui::get_command_prompt_html())
+                                                    .with_bounds(wry::Rect {
+                                                        position: tao::dpi::LogicalPosition::new(0, 0).into(),
+                                                        size: tao::dpi::LogicalSize::new(window_size.width, window_size.height).into(),
+                                                    })
+                                                    .with_transparent(true)
+                                                    .with_ipc_handler(move |request| {
+                                                        let body = request.body();
+                                                        if let Ok(data) = serde_json::from_str::<serde_json::Value>(body) {
+                                                            match data["action"].as_str() {
+                                                                Some("hide_command_prompt") => {
+                                                                    *command_prompt_visible_for_ipc.borrow_mut() = false;
+                                                                    *command_prompt_overlay_for_ipc.borrow_mut() = None;
+                                                                }
+                                                                Some("command_prompt_navigate") => {
+                                                                    if let Some(url_str) = data["url"].as_str() {
+                                                                        let cfg = config_for_prompt.borrow();
+                                                                        let url = if url_str.is_empty() {
+                                                                            crate::convert_file_url(&cfg.default_url)
+                                                                        } else if url_str.contains("://") {
+                                                                            crate::convert_file_url(url_str)
+                                                                        } else {
+                                                                            let is_likely_url = url_str.contains('.')
+                                                                                && !url_str.contains(' ')
+                                                                                && (url_str.starts_with("localhost")
+                                                                                    || url_str.contains("..") == false
+                                                                                        && url_str.split('.').count() >= 2);
+
+                                                                            if is_likely_url {
+                                                                                format!("https://{}", url_str)
+                                                                            } else {
+                                                                                cfg.format_search_url(url_str)
+                                                                            }
+                                                                        };
+                                                                        drop(cfg);
+
+                                                                        *command_prompt_visible_for_ipc.borrow_mut() = false;
+                                                                        *command_prompt_overlay_for_ipc.borrow_mut() = None;
+
+                                                                        let tab_result = tab_manager_for_prompt.borrow_mut().create_tab(&window_for_prompt, &url);
+                                                                        if let Ok(tab_id) = tab_result {
+                                                                            tab_manager_for_prompt.borrow_mut().switch_to_tab(tab_id);
+
+                                                                            if let Some(ref webview) = *tab_bar_for_prompt.borrow() {
+                                                                                let escaped_url = serde_json::to_string(&url).unwrap_or_else(|_| "\"\"".to_string());
+                                                                                let script = format!(
+                                                                                    "window.addTab({}, {}); window.setActiveTab({}); window.updateUrlBar({});",
+                                                                                    tab_id, escaped_url, tab_id, escaped_url
+                                                                                );
+                                                                                let _ = webview.evaluate_script(&script);
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                                _ => {}
+                                                            }
+                                                        }
+                                                    })
+                                                    .build_as_child(window.as_ref())
+                                                {
+                                                    Ok(webview) => {
+                                                        *command_prompt_overlay_ref.borrow_mut() = Some(webview);
+                                                        *command_prompt_visible.borrow_mut() = true;
+                                                    }
+                                                    Err(e) => {
+                                                        debug_log!("Failed to create command prompt overlay: {:?}", e);
+                                                    }
                                                 }
                                             }
                                         }
@@ -567,8 +642,6 @@ pub fn create_browser_window<T>(
         }
     }
 
-    let command_prompt_visible = Rc::new(RefCell::new(false));
-
     {
         let mut manager = tab_manager.borrow_mut();
         let tab_result = if use_welcome_html {
@@ -608,7 +681,7 @@ pub fn create_browser_window<T>(
         tab_manager,
         tab_bar_webview,
         download_overlay,
-        command_prompt_overlay: Rc::new(RefCell::new(None)),
+        command_prompt_overlay: command_prompt_overlay_ref,
         command_prompt_visible,
         sidebar_visible,
         should_quit,
