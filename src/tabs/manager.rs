@@ -11,7 +11,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tao::{
-    dpi::{LogicalPosition, LogicalSize},
+    dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize},
     window::Window,
 };
 use wry::{Rect, WebView, WebViewBuilder};
@@ -867,11 +867,13 @@ console.log('[INIT] Console override installed');
             self.update_split_view_layout(window, None);
         } else {
             let window_size = window.inner_size();
-            let content_width = window_size.width.saturating_sub(self.tab_sidebar_width);
+            let scale_factor = window.scale_factor();
+            let sidebar_width_physical = (self.tab_sidebar_width as f64 * scale_factor) as u32;
+            let content_width = window_size.width.saturating_sub(sidebar_width_physical);
 
             let bounds = Rect {
-                position: LogicalPosition::new(self.tab_sidebar_width as i32, 0).into(),
-                size: LogicalSize::new(content_width, window_size.height).into(),
+                position: PhysicalPosition::new(sidebar_width_physical as i32, 0).into(),
+                size: PhysicalSize::new(content_width, window_size.height).into(),
             };
 
             for tab in self.tabs.values() {
@@ -886,14 +888,17 @@ console.log('[INIT] Console override installed');
             self.update_split_view_layout(window, Some(download_sidebar_width));
         } else {
             let window_size = window.inner_size();
+            let scale_factor = window.scale_factor();
+            let sidebar_width_physical = (self.tab_sidebar_width as f64 * scale_factor) as u32;
+            let download_sidebar_physical = (download_sidebar_width as f64 * scale_factor) as u32;
             let content_width = window_size
                 .width
-                .saturating_sub(self.tab_sidebar_width)
-                .saturating_sub(download_sidebar_width);
+                .saturating_sub(sidebar_width_physical)
+                .saturating_sub(download_sidebar_physical);
 
             let bounds = Rect {
-                position: LogicalPosition::new(self.tab_sidebar_width as i32, 0).into(),
-                size: LogicalSize::new(content_width, window_size.height).into(),
+                position: PhysicalPosition::new(sidebar_width_physical as i32, 0).into(),
+                size: PhysicalSize::new(content_width, window_size.height).into(),
             };
 
             for tab in self.tabs.values() {

@@ -582,15 +582,15 @@ fn handle_window_resize(components: &BrowserWindowComponents) {
     );
 
     let tab_bar_bounds = wry::Rect {
-        position: tao::dpi::LogicalPosition::new(0, 0).into(),
-        size: tao::dpi::LogicalSize::new(250, window_size.height).into(),
+        position: tao::dpi::PhysicalPosition::new(0, 0).into(),
+        size: tao::dpi::PhysicalSize::new(250.0 * scale_factor, window_size.height as f64).into(),
     };
     let _ = components.tab_bar_webview.set_bounds(tab_bar_bounds);
 
-    let sidebar_x = (window_size.width as i32) - DOWNLOAD_SIDEBAR_WIDTH;
+    let sidebar_x = window_size.width as i32 - (DOWNLOAD_SIDEBAR_WIDTH as f64 * scale_factor) as i32;
     let sidebar_bounds = wry::Rect {
-        position: tao::dpi::LogicalPosition::new(sidebar_x, 0).into(),
-        size: tao::dpi::LogicalSize::new(DOWNLOAD_SIDEBAR_WIDTH as u32, window_size.height).into(),
+        position: tao::dpi::PhysicalPosition::new(sidebar_x, 0).into(),
+        size: tao::dpi::PhysicalSize::new(DOWNLOAD_SIDEBAR_WIDTH as f64 * scale_factor, window_size.height as f64).into(),
     };
     let _ = components.download_overlay.set_bounds(sidebar_bounds);
 

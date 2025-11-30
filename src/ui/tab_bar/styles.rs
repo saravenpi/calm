@@ -37,21 +37,36 @@ pub fn get_tab_bar_styles() -> String {
             pointer-events: none;
         }}
 
+        #sidebar-container {{
+            display: flex;
+            flex-direction: column;
+            background: #000000;
+            width: 250px;
+            height: 100vh;
+            padding-top: 84px;
+        }}
+
+        .url-bar-container {{
+            flex-shrink: 0;
+            padding: 12px;
+            padding-bottom: 0;
+            -webkit-app-region: drag;
+        }}
+
         #tab-bar {{
             display: flex;
             flex-direction: column;
             align-items: stretch;
             background: #000000;
-            width: 250px;
-            height: 100vh;
+            width: 100%;
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
             padding: 12px;
-            padding-top: 84px;
-            padding-bottom: 52px;
+            padding-top: 4px;
             gap: 2px;
             user-select: none;
             -webkit-app-region: drag;
-            overflow-y: auto;
-            overflow-x: hidden;
             transition: border-color 0.15s ease;
         }}
 
@@ -253,8 +268,6 @@ pub fn get_tab_bar_styles() -> String {
             font-family: 'gohu', monospace;
             outline: none;
             transition: none;
-            flex-shrink: 0;
-            margin-bottom: 4px;
             -webkit-app-region: no-drag;
             user-select: text;
             -webkit-user-select: text;
@@ -269,15 +282,14 @@ pub fn get_tab_bar_styles() -> String {
         }}
 
         .bottom-controls {{
-            position: fixed;
-            bottom: 12px;
-            left: 12px;
-            right: 24px;
+            position: relative;
+            padding: 12px;
             display: flex;
             flex-direction: row;
             gap: 8px;
             z-index: 102;
             -webkit-app-region: no-drag;
+            flex-shrink: 0;
         }}
 
         .downloads-btn, .settings-btn {{

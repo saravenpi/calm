@@ -87,11 +87,15 @@ impl SplitViewState {
         download_sidebar_width: Option<u32>,
     ) -> (wry::Rect, wry::Rect) {
         let window_size = window.inner_size();
+        let scale_factor = window.scale_factor();
         let download_width = download_sidebar_width.unwrap_or(0);
+
+        let sidebar_width_physical = (sidebar_width as f64 * scale_factor) as u32;
+        let download_width_physical = (download_width as f64 * scale_factor) as u32;
 
         let available_width = window_size
             .width
-            .saturating_sub(sidebar_width + download_width);
+            .saturating_sub(sidebar_width_physical + download_width_physical);
         let available_height = window_size.height;
 
         match self.orientation {
@@ -99,14 +103,14 @@ impl SplitViewState {
                 let split_pos = (available_width as f32 * self.split_ratio) as u32;
 
                 let primary_bounds = wry::Rect {
-                    position: tao::dpi::LogicalPosition::new(sidebar_width as i32, 0).into(),
-                    size: tao::dpi::LogicalSize::new(split_pos, available_height).into(),
+                    position: tao::dpi::PhysicalPosition::new(sidebar_width_physical as i32, 0).into(),
+                    size: tao::dpi::PhysicalSize::new(split_pos, available_height).into(),
                 };
 
                 let secondary_bounds = wry::Rect {
-                    position: tao::dpi::LogicalPosition::new((sidebar_width + split_pos) as i32, 0)
+                    position: tao::dpi::PhysicalPosition::new((sidebar_width_physical + split_pos) as i32, 0)
                         .into(),
-                    size: tao::dpi::LogicalSize::new(available_width - split_pos, available_height)
+                    size: tao::dpi::PhysicalSize::new(available_width - split_pos, available_height)
                         .into(),
                 };
 
@@ -116,17 +120,17 @@ impl SplitViewState {
                 let split_pos = (available_height as f32 * self.split_ratio) as u32;
 
                 let primary_bounds = wry::Rect {
-                    position: tao::dpi::LogicalPosition::new(sidebar_width as i32, 0).into(),
-                    size: tao::dpi::LogicalSize::new(available_width, split_pos).into(),
+                    position: tao::dpi::PhysicalPosition::new(sidebar_width_physical as i32, 0).into(),
+                    size: tao::dpi::PhysicalSize::new(available_width, split_pos).into(),
                 };
 
                 let secondary_bounds = wry::Rect {
-                    position: tao::dpi::LogicalPosition::new(
-                        sidebar_width as i32,
+                    position: tao::dpi::PhysicalPosition::new(
+                        sidebar_width_physical as i32,
                         split_pos as i32,
                     )
                     .into(),
-                    size: tao::dpi::LogicalSize::new(available_width, available_height - split_pos)
+                    size: tao::dpi::PhysicalSize::new(available_width, available_height - split_pos)
                         .into(),
                 };
 
