@@ -19,10 +19,11 @@ url = "2.5"
 urlencoding = "2.1"
 infer = "0.16"
 base64 = "0.22"
-reqwest = { version = "0.12", features = ["blocking"] }
+reqwest = { version = "0.12", features = ["blocking", "json"] }
 content_disposition = "0.4"
 dirs = "5.0"
 chrono = "0.4"
+tokio = { version = "1.0", features = ["rt", "macros"], optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

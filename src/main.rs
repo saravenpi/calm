@@ -3,17 +3,23 @@ mod debug;
 mod downloads;
 mod errors;
 mod ipc;
+#[allow(dead_code)]
+mod performance;
 mod privacy;
+#[allow(dead_code)]
+mod session;
 mod shortcuts;
 mod single_instance;
 mod tabs;
 mod ui;
+#[allow(dead_code)]
+mod updater;
 mod url_cleaner;
 mod utils;
 mod vimium_hints;
 mod window;
 
-use muda::{Menu, MenuItem, PredefinedMenuItem, Submenu, accelerator::Accelerator};
+use muda::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Instant};
 use tao::{
     event::{ElementState, Event, MouseButton, WindowEvent},
@@ -92,6 +98,16 @@ fn main() -> wry::Result<()> {
         config.ui.vim_mode,
         config.ui.debug
     );
+    debug_log!("Keyboard shortcuts loaded:");
+    debug_log!("  new_tab: {}", config.ui.shortcuts.new_tab);
+    debug_log!("  close_tab: {}", config.ui.shortcuts.close_tab);
+    debug_log!("  reload: {}", config.ui.shortcuts.reload);
+    debug_log!("  focus_url: {}", config.ui.shortcuts.focus_url);
+    debug_log!("  toggle_downloads: {}", config.ui.shortcuts.toggle_downloads);
+    debug_log!("  focus_sidebar: {}", config.ui.shortcuts.focus_sidebar);
+    debug_log!("  find: {}", config.ui.shortcuts.find);
+    debug_log!("  new_window: {}", config.ui.shortcuts.new_window);
+    debug_log!("  toggle_split_view: {}", config.ui.shortcuts.toggle_split_view);
 
     if !single_instance::SingleInstance::is_single() {
         let url_to_send = if args.is_empty() {
@@ -135,17 +151,17 @@ fn main() -> wry::Result<()> {
         let new_tab_item = MenuItem::new(
             "New Tab",
             true,
-            Some(Accelerator::new(Some(muda::accelerator::Modifiers::SUPER), muda::accelerator::Code::KeyT)),
+            shortcuts::parse_shortcut(&config.ui.shortcuts.new_tab),
         );
         let new_window_item = MenuItem::new(
             "New Window",
             true,
-            Some(Accelerator::new(Some(muda::accelerator::Modifiers::SUPER), muda::accelerator::Code::KeyN)),
+            shortcuts::parse_shortcut(&config.ui.shortcuts.new_window),
         );
         let close_tab_item = MenuItem::new(
             "Close Tab",
             true,
-            Some(Accelerator::new(Some(muda::accelerator::Modifiers::SUPER), muda::accelerator::Code::KeyW)),
+            shortcuts::parse_shortcut(&config.ui.shortcuts.close_tab),
         );
 
         file_menu
@@ -174,17 +190,17 @@ fn main() -> wry::Result<()> {
         let reload_item = MenuItem::new(
             "Reload",
             true,
-            Some(Accelerator::new(Some(muda::accelerator::Modifiers::SUPER), muda::accelerator::Code::KeyR)),
+            shortcuts::parse_shortcut(&config.ui.shortcuts.reload),
         );
         let toggle_downloads_item = MenuItem::new(
             "Toggle Downloads",
             true,
-            Some(Accelerator::new(Some(muda::accelerator::Modifiers::SUPER), muda::accelerator::Code::KeyJ)),
+            shortcuts::parse_shortcut(&config.ui.shortcuts.toggle_downloads),
         );
         let toggle_split_view_item = MenuItem::new(
             "Toggle Split View",
             true,
-            Some(Accelerator::new(Some(muda::accelerator::Modifiers::SUPER | muda::accelerator::Modifiers::SHIFT), muda::accelerator::Code::KeyS)),
+            shortcuts::parse_shortcut(&config.ui.shortcuts.toggle_split_view),
         );
 
         view_menu
@@ -200,17 +216,17 @@ fn main() -> wry::Result<()> {
         let focus_url_item = MenuItem::new(
             "Focus URL Bar",
             true,
-            Some(Accelerator::new(Some(muda::accelerator::Modifiers::SUPER), muda::accelerator::Code::KeyL)),
+            shortcuts::parse_shortcut(&config.ui.shortcuts.focus_url),
         );
         let focus_sidebar_item = MenuItem::new(
             "Focus Sidebar",
             true,
-            Some(Accelerator::new(Some(muda::accelerator::Modifiers::SUPER), muda::accelerator::Code::KeyE)),
+            shortcuts::parse_shortcut(&config.ui.shortcuts.focus_sidebar),
         );
         let find_item = MenuItem::new(
             "Find in Page",
             true,
-            Some(Accelerator::new(Some(muda::accelerator::Modifiers::SUPER), muda::accelerator::Code::KeyF)),
+            shortcuts::parse_shortcut(&config.ui.shortcuts.find),
         );
 
         navigate_menu
@@ -302,7 +318,9 @@ fn main() -> wry::Result<()> {
     };
 
     event_loop.run(move |event, event_loop_target, control_flow| {
-        *control_flow = ControlFlow::Wait;
+        *control_flow = ControlFlow::Poll;
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
 
         #[cfg(target_os = "macos")]
         if let Ok(menu_event) = muda::MenuEvent::receiver().try_recv() {
@@ -535,27 +553,13 @@ fn main() -> wry::Result<()> {
                 let windows = windows_ref.borrow();
                 if let Some(components) = windows.get(&window_id) {
                     if key_event.state == ElementState::Pressed {
-                        let modifiers = *modifiers_state.borrow();
-
-                        if let Some(shortcut) = shortcuts::Shortcut::from_key_event(&key_event, modifiers) {
-                            shortcut_manager.handle_shortcut(
-                                shortcut,
-                                components,
-                                &config,
-                                event_loop_target,
-                                &windows_ref,
-                                &focused_window_id,
-                                control_flow,
-                            );
-                        } else {
-                            handle_keyboard_input(
-                                key_event,
-                                components,
-                                &modifiers_state,
-                                &config,
-                                &last_g_key_time,
-                            );
-                        }
+                        handle_keyboard_input(
+                            key_event,
+                            components,
+                            &modifiers_state,
+                            &config,
+                            &last_g_key_time,
+                        );
                     }
                 }
             }

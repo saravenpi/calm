@@ -11,37 +11,37 @@ pub fn get_tab_bar_html_structure() -> &'static str {
                 <path d="M4 11v2h12v2h2v-2h2v-2h-2V9h-2v2H4zm10-4h2v2h-2V7zm0 0h-2V5h2v2zm0 10h2v-2h-2v2zm0 0h-2v2h2v-2z"/>
             </svg>
         </button>
-        <button class="reload-btn" id="reload-btn" onclick="playUISound('cursorMove'); window.ipc.postMessage(JSON.stringify({action: 'reload_tab'}))" title="Reload (Cmd+R)">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
-                <path d="M16 2h-2v2h2v2H4v2H2v5h2V8h12v2h-2v2h2v-2h2V8h2V6h-2V4h-2V2zM6 20h2v2h2v-2H8v-2h12v-2h2v-5h-2v5H8v-2h2v-2H8v2H6v2H4v2h2v2z"/>
-            </svg>
-        </button>
         <button class="new-tab-btn" onclick="playUISound('cursorMove'); handleNewTab()" title="New Tab (Cmd+T)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
                 <path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7V4z"/>
             </svg>
         </button>
     </div>
-    <div class="split-view-controls">
-        <button class="split-view-btn" id="split-view-btn" onclick="playUISound('cursorMove'); window.ipc.postMessage(JSON.stringify({action: 'toggle_split_view'}))" title="Toggle Split View (Cmd+Shift+S)">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
-                <path d="M2 2h20v20H2V2zm2 2v4h4V4H4zm6 0v4h4V4h-4zm6 0v4h4V4h-4zm4 6h-4v4h4v-4zm0 6h-4v4h4v-4zm-6 4v-4h-4v4h4zm-6 0v-4H4v4h4zm-4-6h4v-4H4v4zm6-4v4h4v-4h-4z"/>
-            </svg>
-        </button>
-        <button class="split-orientation-btn" id="split-orientation-btn" onclick="window.ipc.postMessage(JSON.stringify({action: 'toggle_split_orientation'}))" title="Toggle Split Orientation" style="display: none;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
-                <path d="M2 2h20v20H2V2zm2 2v4h4V4H4zm6 0v4h4V4h-4zm6 0v4h4V4h-4zm4 6h-4v4h4v-4zm0 6h-4v4h4v-4zm-6 4v-4h-4v4h4zm-6 0v-4H4v4h4zm-4-6h4v-4H4v4zm6-4v4h4v-4h-4z"/>
-            </svg>
-        </button>
-        <button class="swap-panes-btn" id="swap-panes-btn" onclick="window.ipc.postMessage(JSON.stringify({action: 'swap_split_panes'}))" title="Swap Panes" style="display: none;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
-                <path d="M16 2h-2v2h2v2H4v2H2v5h2V8h12v2h-2v2h2v-2h2V8h2V6h-2V4h-2V2zM6 20h2v2h2v-2H8v-2h12v-2h2v-5h-2v5H8v-2h2v-2H8v2H6v2H4v2h2v2z"/>
-            </svg>
-        </button>
-    </div>
     <div id="sidebar-container">
+        <div class="split-view-controls">
+            <button class="split-orientation-btn" id="split-orientation-btn" onclick="window.ipc.postMessage(JSON.stringify({action: 'toggle_split_orientation'}))" title="Toggle Split Orientation">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
+                    <path d="M2 5h20v14H2V5zm2 2v4h16V7H4zm16 6H4v4h16v-4z"/>
+                </svg>
+            </button>
+            <button class="swap-panes-btn" id="swap-panes-btn" onclick="window.ipc.postMessage(JSON.stringify({action: 'swap_split_panes'}))" title="Swap Panes">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
+                    <path d="M15 9V7h2v2h-2zm2 6v-2h-4v-2h4V9h2v2h2v2h-2v2h-2zm0 0v2h-2v-2h2zm-6-4v2H7v2H5v-2H3v-2h2V9h2v2h4zm-4 4h2v2H7v-2zm2-8v2H7V7h2z"/>
+                </svg>
+            </button>
+            <button class="split-view-btn" id="split-view-btn" onclick="if (!this.disabled) { playUISound('cursorMove'); window.ipc.postMessage(JSON.stringify({action: 'toggle_split_view'})); }" title="Toggle Split View (Cmd+Shift+S)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
+                    <path d="M2 5h20v14H2V5zm2 2v10h7V7H4zm9 0v10h7V7h-7z"/>
+                </svg>
+            </button>
+        </div>
         <div class="url-bar-container">
             <input type="text" class="url-bar" id="url-bar" placeholder="search or enter address" />
+            <button class="reload-btn" id="reload-btn" onclick="playUISound('cursorMove'); window.ipc.postMessage(JSON.stringify({action: 'reload_tab'}))" title="Reload (Cmd+R)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
+                    <path d="M16 2h-2v2h2v2H4v2H2v5h2V8h12v2h-2v2h2v-2h2V8h2V6h-2V4h-2V2zM6 20h2v2h2v-2H8v-2h12v-2h2v-5h-2v5H8v-2h2v-2H8v2H6v2H4v2h2v2z"/>
+                </svg>
+            </button>
         </div>
         <div id="tab-bar"></div>
         <div class="bottom-controls">

@@ -19,7 +19,9 @@ pub struct BrowserWindowComponents {
     pub tab_manager: Rc<RefCell<TabManager>>,
     pub tab_bar_webview: Rc<WebView>,
     pub download_overlay: Rc<WebView>,
+    #[allow(dead_code)]
     pub command_prompt_overlay: Rc<RefCell<Option<WebView>>>,
+    #[allow(dead_code)]
     pub command_prompt_visible: Rc<RefCell<bool>>,
     pub sidebar_visible: Rc<RefCell<bool>>,
     pub should_quit: Rc<RefCell<bool>>,
@@ -108,6 +110,27 @@ pub fn create_browser_window<T>(
                             Some("switch_tab") => {
                                 if let Some(tab_id) = data["tabId"].as_u64() {
                                     tab_manager.borrow_mut().switch_to_tab(tab_id as usize);
+
+                                    let is_in_split = tab_manager.borrow().is_tab_in_split_group(tab_id as usize);
+                                    if is_in_split {
+                                        tab_manager.borrow_mut().update_split_view_layout(&window, None);
+                                    } else {
+                                        tab_manager.borrow_mut().resize_all_tabs(&window);
+                                    }
+
+                                    if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
+                                        let ui_state = tab_manager.borrow().get_split_ui_state();
+                                        let orientation_str = ui_state.active_group_orientation.as_deref().unwrap_or("vertical");
+                                        let groups_json = tab_manager.borrow().get_split_groups_json();
+                                        let script = format!(
+                                            "if (window.updateSplitUIState) {{ window.updateSplitUIState({}, {}, '{}'); }} if (window.setSplitGroups) {{ window.setSplitGroups({}); }}",
+                                            ui_state.active_tab_in_split,
+                                            ui_state.can_create_split,
+                                            orientation_str,
+                                            groups_json
+                                        );
+                                        let _ = webview.evaluate_script(&script);
+                                    }
                                 }
                             }
                             Some("close_tab") => {
@@ -251,16 +274,35 @@ pub fn create_browser_window<T>(
                             }
                             Some("open_settings") => {
                                 let settings_html = ui::get_settings_html();
-                                let tab_result =
-                                    tab_manager.borrow_mut().create_tab_with_html(&window, &settings_html);
+                                let tab_result = tab_manager.borrow_mut().create_tab_with_html(&window, &settings_html);
                                 if let Ok(tab_id) = tab_result {
                                     tab_manager.borrow_mut().switch_to_tab(tab_id);
+
+                                    let is_in_split = tab_manager.borrow().is_tab_in_split_group(tab_id);
+                                    if is_in_split {
+                                        tab_manager.borrow_mut().update_split_view_layout(&window, None);
+                                    } else {
+                                        tab_manager.borrow_mut().resize_all_tabs(&window);
+                                    }
+
                                     if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
                                         let script = format!(
                                             "window.addTab({}, 'calm://settings'); window.setActiveTab({}); window.updateUrlBar('calm://settings');",
                                             tab_id, tab_id
                                         );
                                         let _ = webview.evaluate_script(&script);
+
+                                        let ui_state = tab_manager.borrow().get_split_ui_state();
+                                        let orientation_str = ui_state.active_group_orientation.as_deref().unwrap_or("vertical");
+                                        let groups_json = tab_manager.borrow().get_split_groups_json();
+                                        let state_script = format!(
+                                            "if (window.updateSplitUIState) {{ window.updateSplitUIState({}, {}, '{}'); }} if (window.setSplitGroups) {{ window.setSplitGroups({}); }}",
+                                            ui_state.active_tab_in_split,
+                                            ui_state.can_create_split,
+                                            orientation_str,
+                                            groups_json
+                                        );
+                                        let _ = webview.evaluate_script(&state_script);
                                     }
                                 }
                             }
@@ -399,25 +441,58 @@ pub fn create_browser_window<T>(
                             }
                             Some("toggle_split_view") => {
                                 debug_log!("=== IPC toggle_split_view action received ===");
-                                let toggled = tab_manager.borrow_mut().toggle_split_view(&window);
-                                if toggled {
-                                    debug_log!("Split view enabled via IPC");
-                                } else {
-                                    debug_log!("Split view disabled via IPC");
-                                }
+                                let _toggled = tab_manager.borrow_mut().toggle_split_view(&window);
+
                                 if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
-                                    let enabled = tab_manager.borrow().is_split_view_enabled();
-                                    let script = format!("if (window.updateSplitViewButtons) {{ window.updateSplitViewButtons({}); }}", enabled);
+                                    let ui_state = tab_manager.borrow().get_split_ui_state();
+                                    let orientation_str = ui_state.active_group_orientation.as_deref().unwrap_or("vertical");
+                                    let groups_json = tab_manager.borrow().get_split_groups_json();
+                                    let script = format!(
+                                        "if (window.updateSplitUIState) {{ window.updateSplitUIState({}, {}, '{}'); }} if (window.setSplitGroups) {{ window.setSplitGroups({}); }}",
+                                        ui_state.active_tab_in_split,
+                                        ui_state.can_create_split,
+                                        orientation_str,
+                                        groups_json
+                                    );
                                     let _ = webview.evaluate_script(&script);
+                                    let _ = webview.evaluate_script("window.refreshTabs();");
                                 }
                             }
                             Some("toggle_split_orientation") => {
                                 debug_log!("=== IPC toggle_split_orientation action received ===");
                                 tab_manager.borrow_mut().toggle_split_orientation(&window);
+                                if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
+                                    let ui_state = tab_manager.borrow().get_split_ui_state();
+                                    let orientation_str = ui_state.active_group_orientation.as_deref().unwrap_or("vertical");
+                                    let groups_json = tab_manager.borrow().get_split_groups_json();
+                                    let script = format!(
+                                        "if (window.updateSplitUIState) {{ window.updateSplitUIState({}, {}, '{}'); }} if (window.setSplitGroups) {{ window.setSplitGroups({}); }}",
+                                        ui_state.active_tab_in_split,
+                                        ui_state.can_create_split,
+                                        orientation_str,
+                                        groups_json
+                                    );
+                                    let _ = webview.evaluate_script(&script);
+                                    let _ = webview.evaluate_script("window.refreshTabs();");
+                                }
                             }
                             Some("swap_split_panes") => {
                                 debug_log!("=== IPC swap_split_panes action received ===");
-                                tab_manager.borrow_mut().swap_split_panes();
+                                tab_manager.borrow_mut().swap_split_panes(&window);
+                                if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
+                                    let ui_state = tab_manager.borrow().get_split_ui_state();
+                                    let orientation_str = ui_state.active_group_orientation.as_deref().unwrap_or("vertical");
+                                    let groups_json = tab_manager.borrow().get_split_groups_json();
+                                    let script = format!(
+                                        "if (window.updateSplitUIState) {{ window.updateSplitUIState({}, {}, '{}'); }} if (window.setSplitGroups) {{ window.setSplitGroups({}); }}",
+                                        ui_state.active_tab_in_split,
+                                        ui_state.can_create_split,
+                                        orientation_str,
+                                        groups_json
+                                    );
+                                    let _ = webview.evaluate_script(&script);
+                                    let _ = webview.evaluate_script("window.refreshTabs();");
+                                }
                             }
                             Some("keyboard_shortcut") => {
                                 if let Some(shortcut) = data["shortcut"].as_str() {
@@ -579,8 +654,13 @@ pub fn create_browser_window<T>(
                                         "toggle_split_view" => {
                                             let _ = tab_manager.borrow_mut().toggle_split_view(&window);
                                             if let Some(ref webview) = *tab_bar_webview_ref.borrow() {
-                                                let enabled = tab_manager.borrow().is_split_view_enabled();
-                                                let script = format!("if (window.updateSplitViewButtons) {{ window.updateSplitViewButtons({}); }}", enabled);
+                                                let (enabled, primary_id, secondary_id, orientation) = tab_manager.borrow().get_split_view_state();
+                                                let primary_str = primary_id.map_or("null".to_string(), |id| id.to_string());
+                                                let secondary_str = secondary_id.map_or("null".to_string(), |id| id.to_string());
+                                                let script = format!(
+                                                    "if (window.updateSplitViewButtons) {{ window.updateSplitViewButtons({}); }} if (window.setSplitViewState) {{ window.setSplitViewState({}, {}, {}, '{}'); }}",
+                                                    enabled, enabled, primary_str, secondary_str, orientation
+                                                );
                                                 let _ = webview.evaluate_script(&script);
                                             }
                                         }
@@ -711,6 +791,16 @@ pub fn create_browser_window<T>(
                     tab_id, escaped_url, tab_id, url_bar_display
                 );
                 let _ = tab_bar_webview.evaluate_script(&script);
+
+                let ui_state = manager.get_split_ui_state();
+                let orientation_str = ui_state.active_group_orientation.as_deref().unwrap_or("vertical");
+                let state_script = format!(
+                    "if (window.updateSplitUIState) {{ window.updateSplitUIState({}, {}, '{}'); }}",
+                    ui_state.active_tab_in_split,
+                    ui_state.can_create_split,
+                    orientation_str
+                );
+                let _ = tab_bar_webview.evaluate_script(&state_script);
             }
             Err(_) => {}
         }

@@ -44,6 +44,7 @@ pub fn get_tab_bar_styles() -> String {
             width: 250px;
             height: 100vh;
             padding-top: 84px;
+            position: relative;
         }}
 
         .url-bar-container {{
@@ -51,6 +52,10 @@ pub fn get_tab_bar_styles() -> String {
             padding: 12px;
             padding-bottom: 0;
             -webkit-app-region: drag;
+            display: flex;
+            flex-direction: row;
+            gap: 2px;
+            align-items: center;
         }}
 
         #tab-bar {{
@@ -87,7 +92,7 @@ pub fn get_tab_bar_styles() -> String {
             background: #101010;
         }}
 
-        .tab, .new-tab-btn, .reload-btn, .back-btn, .forward-btn, .downloads-btn, .close-tab, .split-view-btn, .split-orientation-btn, .swap-panes-btn {{
+        .tab, .new-tab-btn, .reload-btn, .back-btn, .forward-btn, .downloads-btn, .close-tab, .split-view-btn, .split-orientation-btn, .swap-panes-btn, .close-split-btn {{
             -webkit-app-region: no-drag;
         }}
 
@@ -275,7 +280,7 @@ pub fn get_tab_bar_styles() -> String {
             -webkit-app-region: no-drag;
         }}
 
-        .new-tab-btn, .reload-btn, .back-btn, .forward-btn, .split-view-btn, .split-orientation-btn, .swap-panes-btn {{
+        .new-tab-btn, .reload-btn, .back-btn, .forward-btn, .split-view-btn, .split-orientation-btn, .swap-panes-btn, .close-split-btn {{
             width: 32px;
             height: 32px;
             background: #1a1a1a;
@@ -290,13 +295,13 @@ pub fn get_tab_bar_styles() -> String {
             flex-shrink: 0;
         }}
 
-        .new-tab-btn:hover, .reload-btn:hover, .back-btn:hover, .forward-btn:hover, .split-view-btn:hover, .split-orientation-btn:hover, .swap-panes-btn:hover {{
+        .new-tab-btn:hover, .reload-btn:hover, .back-btn:hover, .forward-btn:hover, .split-view-btn:hover, .split-orientation-btn:hover, .swap-panes-btn:hover, .close-split-btn:hover {{
             background: #ffffff;
             color: #000000;
             border-color: #ffffff;
         }}
 
-        .new-tab-btn:active, .reload-btn:active, .back-btn:active, .forward-btn:active, .split-view-btn:active, .split-orientation-btn:active, .swap-panes-btn:active {{
+        .new-tab-btn:active, .reload-btn:active, .back-btn:active, .forward-btn:active, .split-view-btn:active, .split-orientation-btn:active, .swap-panes-btn:active, .close-split-btn:active {{
             background: #101010;
             color: #ffffff;
         }}
@@ -304,6 +309,89 @@ pub fn get_tab_bar_styles() -> String {
         .split-view-btn.active {{
             background: #ffffff;
             color: #000000;
+        }}
+
+        .split-orientation-btn, .swap-panes-btn {{
+            opacity: 0;
+            transform: translateX(40px);
+            pointer-events: none;
+            transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+        }}
+
+        .split-orientation-btn.visible, .swap-panes-btn.visible {{
+            opacity: 1;
+            transform: translateX(0);
+            pointer-events: auto;
+        }}
+
+        .split-orientation-btn.hiding, .swap-panes-btn.hiding {{
+            opacity: 0;
+            transform: translateX(40px);
+        }}
+
+        .split-view-btn.morphing {{
+            animation: iconMorph 0.3s ease-in-out;
+        }}
+
+        @keyframes iconMorph {{
+            0% {{
+                transform: scale(1) rotate(0deg);
+                opacity: 1;
+            }}
+            50% {{
+                transform: scale(0.8) rotate(90deg);
+                opacity: 0.5;
+            }}
+            100% {{
+                transform: scale(1) rotate(0deg);
+                opacity: 1;
+            }}
+        }}
+
+        .split-orientation-btn.rotating {{
+            animation: orientationRotate 0.4s ease-in-out;
+        }}
+
+        @keyframes orientationRotate {{
+            0% {{
+                transform: rotate(0deg) scale(1);
+                opacity: 1;
+            }}
+            50% {{
+                transform: rotate(90deg) scale(0.9);
+                opacity: 0.6;
+            }}
+            100% {{
+                transform: rotate(0deg) scale(1);
+                opacity: 1;
+            }}
+        }}
+
+        .swap-panes-btn.swapping {{
+            animation: swapPulse 0.4s ease-in-out;
+        }}
+
+        @keyframes swapPulse {{
+            0% {{
+                transform: scale(1);
+                opacity: 1;
+            }}
+            25% {{
+                transform: scale(0.85) translateX(-3px);
+                opacity: 0.7;
+            }}
+            50% {{
+                transform: scale(0.85);
+                opacity: 0.6;
+            }}
+            75% {{
+                transform: scale(0.85) translateX(3px);
+                opacity: 0.7;
+            }}
+            100% {{
+                transform: scale(1);
+                opacity: 1;
+            }}
         }}
 
         .back-btn:disabled, .forward-btn:disabled {{
@@ -317,7 +405,7 @@ pub fn get_tab_bar_styles() -> String {
         }}
 
         .url-bar {{
-            width: 100%;
+            flex: 1;
             height: 32px;
             background: #101010;
             border: 1px solid #333333;
@@ -543,13 +631,76 @@ pub fn get_tab_bar_styles() -> String {
         }}
 
         .split-view-controls {{
-            position: fixed;
-            top: 44px;
+            position: absolute;
+            top: 48px;
             right: 12px;
             display: flex;
             gap: 2px;
             z-index: 101;
             -webkit-app-region: no-drag;
+        }}
+
+        .tab-group {{
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding: 6px;
+            background: #0a0a0a;
+            border: 2px solid #444444;
+            border-radius: 0;
+            position: relative;
+            -webkit-app-region: no-drag;
+            animation: splitGroupAppear 0.3s ease-out;
+        }}
+
+        @keyframes splitGroupAppear {{
+            0% {{
+                opacity: 0;
+                transform: scale(0.95);
+                border-color: #ffffff;
+            }}
+            100% {{
+                opacity: 1;
+                transform: scale(1);
+                border-color: #444444;
+            }}
+        }}
+
+        .tab-group.splitting {{
+            animation: splitGroupForm 0.3s ease-out;
+        }}
+
+        @keyframes splitGroupForm {{
+            0% {{
+                padding: 0;
+                gap: 0;
+                border-width: 0;
+            }}
+            100% {{
+                padding: 6px;
+                gap: 2px;
+                border-width: 2px;
+            }}
+        }}
+
+        .tab.in-split-view {{
+            border-color: #555555;
+            animation: tabEnterSplit 0.3s ease-out;
+        }}
+
+        @keyframes tabEnterSplit {{
+            0% {{
+                opacity: 0;
+                transform: translateY(-10px);
+            }}
+            100% {{
+                opacity: 1;
+                transform: translateY(0);
+            }}
+        }}
+
+        .tab.in-split-view:hover {{
+            border-color: #ffffff;
         }}
     "#,
         fonts::get_gohu_font_face()

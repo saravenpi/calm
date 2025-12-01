@@ -6,6 +6,13 @@ pub fn get_tab_bar_script() -> &'static str {
         window.focusedTabIndex = -1;
         window.lastGKeyTime = 0;
         window.sidebarFocused = false;
+        window.splitViewState = {
+            enabled: false,
+            primaryTabId: null,
+            secondaryTabId: null,
+            orientation: 'vertical'
+        };
+        window.splitGroups = [];
 
         window.showSidebarFocus = function() {
             const tabBar = document.getElementById('tab-bar');
@@ -132,6 +139,8 @@ pub fn get_tab_bar_script() -> &'static str {
             setTimeout(() => {
                 tabEl.classList.remove('opening');
             }, 300);
+
+            window.updateSplitButtonState();
         };
 
         window.closeTabWithAnimation = function(tabId) {
@@ -149,6 +158,7 @@ pub fn get_tab_bar_script() -> &'static str {
             }
             window.tabs = window.tabs.filter(t => t.id !== tabId);
             delete window.tabAudioState[tabId];
+            window.updateSplitButtonState();
         };
 
         window.setActiveTab = function(tabId) {
@@ -176,6 +186,10 @@ pub fn get_tab_bar_script() -> &'static str {
         };
 
         window.updateTabFavicon = function(tabId, faviconUrl) {
+            const tab = window.tabs.find(t => t.id === tabId);
+            if (tab) {
+                tab.favicon = faviconUrl;
+            }
             const favicon = document.getElementById(`favicon-${tabId}`);
             if (favicon && faviconUrl) {
                 favicon.src = faviconUrl;
@@ -199,6 +213,8 @@ pub fn get_tab_bar_script() -> &'static str {
             const tabEl = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
             if (tabEl) {
                 if (isLoading) {
+                    tabEl.classList.remove('loading');
+                    void tabEl.offsetHeight;
                     tabEl.classList.add('loading');
                 } else {
                     tabEl.classList.remove('loading');
@@ -417,21 +433,229 @@ pub fn get_tab_bar_script() -> &'static str {
             }
         }, true);
 
-        window.updateSplitViewButtons = function(enabled) {
+        window.setSplitGroups = function(groups) {
+            window.splitGroups = groups;
+        };
+
+        window.updateSplitUIState = function(activeTabInSplit, canCreateSplit, orientation) {
             const splitViewBtn = document.getElementById('split-view-btn');
             const splitOrientationBtn = document.getElementById('split-orientation-btn');
             const swapPanesBtn = document.getElementById('swap-panes-btn');
 
-            if (enabled) {
-                if (splitViewBtn) splitViewBtn.classList.add('active');
-                if (splitOrientationBtn) splitOrientationBtn.style.display = '';
-                if (swapPanesBtn) swapPanesBtn.style.display = '';
+            const previousOrientation = window.splitViewState.orientation;
+            const orientationChanged = previousOrientation !== orientation;
+
+            if (activeTabInSplit) {
+                if (splitViewBtn) {
+                    splitViewBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges"><path d="M4 11h16v2H4z"/></svg>';
+                    splitViewBtn.title = 'Close Split View (Cmd+Shift+S)';
+                    splitViewBtn.classList.add('active');
+                    splitViewBtn.disabled = false;
+                    splitViewBtn.style.opacity = '';
+                    splitViewBtn.style.cursor = 'pointer';
+                }
+
+                if (splitOrientationBtn) {
+                    splitOrientationBtn.classList.remove('hiding');
+                    splitOrientationBtn.classList.add('visible');
+                }
+
+                if (swapPanesBtn) {
+                    swapPanesBtn.classList.remove('hiding');
+                    swapPanesBtn.classList.add('visible');
+                }
+
+                window.splitViewState.orientation = orientation;
+                if (orientationChanged) {
+                    window.updateSplitOrientationIcon(true);
+                } else {
+                    window.updateSplitOrientationIcon(false);
+                }
             } else {
-                if (splitViewBtn) splitViewBtn.classList.remove('active');
-                if (splitOrientationBtn) splitOrientationBtn.style.display = 'none';
-                if (swapPanesBtn) swapPanesBtn.style.display = 'none';
+                if (splitViewBtn) {
+                    splitViewBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges"><path d="M2 5h20v14H2V5zm2 2v10h7V7H4zm9 0v10h7V7h-7z"/></svg>';
+                    splitViewBtn.title = 'Create Split View (Cmd+Shift+S)';
+                    splitViewBtn.classList.remove('active');
+
+                    if (canCreateSplit) {
+                        splitViewBtn.disabled = false;
+                        splitViewBtn.style.opacity = '';
+                        splitViewBtn.style.cursor = 'pointer';
+                    } else {
+                        splitViewBtn.disabled = true;
+                        splitViewBtn.style.opacity = '0.3';
+                        splitViewBtn.style.cursor = 'not-allowed';
+                    }
+                }
+
+                if (splitOrientationBtn) {
+                    splitOrientationBtn.classList.remove('visible');
+                    splitOrientationBtn.classList.add('hiding');
+                }
+
+                if (swapPanesBtn) {
+                    swapPanesBtn.classList.remove('visible');
+                    swapPanesBtn.classList.add('hiding');
+                }
             }
         };
+
+        window.setSplitViewState = function(enabled, primaryTabId, secondaryTabId, orientation) {
+            window.splitViewState.enabled = enabled;
+            window.splitViewState.primaryTabId = primaryTabId;
+            window.splitViewState.secondaryTabId = secondaryTabId;
+            window.splitViewState.orientation = orientation || 'vertical';
+            window.updateSplitOrientationIcon(false);
+            window.refreshTabs();
+        };
+
+        window.updateSplitOrientationIcon = function(animate) {
+            const orientationBtn = document.getElementById('split-orientation-btn');
+            const swapBtn = document.getElementById('swap-panes-btn');
+            if (!orientationBtn) return;
+
+            const isVertical = window.splitViewState.orientation === 'vertical';
+
+            if (animate) {
+                orientationBtn.classList.add('rotating');
+
+                setTimeout(() => {
+                    orientationBtn.innerHTML = isVertical
+                        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges"><path d="M2 5h20v14H2V5zm2 2v4h16V7H4zm16 6H4v4h16v-4z"/></svg>'
+                        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges"><path d="M2 5h20v14H2V5zm2 2v10h7V7H4zm9 0v10h7V7h-7z"/></svg>';
+
+                    orientationBtn.title = isVertical ? 'Switch to Horizontal Split' : 'Switch to Vertical Split';
+                }, 200);
+
+                setTimeout(() => {
+                    orientationBtn.classList.remove('rotating');
+                }, 400);
+            } else {
+                orientationBtn.innerHTML = isVertical
+                    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges"><path d="M2 5h20v14H2V5zm2 2v4h16V7H4zm16 6H4v4h16v-4z"/></svg>'
+                    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges"><path d="M2 5h20v14H2V5zm2 2v10h7V7H4zm9 0v10h7V7h-7z"/></svg>';
+
+                orientationBtn.title = isVertical ? 'Switch to Horizontal Split' : 'Switch to Vertical Split';
+            }
+
+            if (swapBtn) {
+                swapBtn.classList.add('swapping');
+
+                setTimeout(() => {
+                    swapBtn.innerHTML = isVertical
+                        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges"><path d="M15 9V7h2v2h-2zm2 6v-2h-4v-2h4V9h2v2h2v2h-2v2h-2zm0 0v2h-2v-2h2zm-6-4v2H7v2H5v-2H3v-2h2V9h2v2h4zm-4 4h2v2H7v-2zm2-8v2H7V7h2z"/></svg>'
+                        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges"><path d="M11 11h2V7h2v2h2V7h-2V5h-2V3h-2v2H9v2H7v2h2V7h2v4zm0 2h2v4h2v2h-2v2h-2v-2H9v-2h2v-4zm-2 4v-2H7v2h2zm6 0v-2h2v2h-2z"/></svg>';
+                    swapBtn.title = 'Swap Panes';
+                }, 200);
+
+                setTimeout(() => {
+                    swapBtn.classList.remove('swapping');
+                }, 400);
+            }
+        };
+
+        window.updateSplitButtonState = function() {
+            if (window.updateSplitUIState) {
+                const canCreate = window.tabs.length >= 2;
+                window.updateSplitUIState(false, canCreate, 'vertical');
+            }
+        };
+
+        window.refreshTabs = function() {
+            const tabBar = document.getElementById('tab-bar');
+            if (!tabBar) return;
+
+            const existingTabs = tabBar.querySelectorAll('.tab, .tab-group');
+            existingTabs.forEach(el => el.remove());
+
+            if (window.tabs.length === 0) return;
+
+            const renderedTabIds = new Set();
+
+            window.splitGroups.forEach(group => {
+                const primaryTab = window.tabs.find(t => t.id === group.primary);
+                const secondaryTab = window.tabs.find(t => t.id === group.secondary);
+
+                if (primaryTab && secondaryTab) {
+                    const groupEl = document.createElement('div');
+                    groupEl.className = 'tab-group';
+
+                    const primaryEl = createTabElement(primaryTab, true, 'primary');
+                    const secondaryEl = createTabElement(secondaryTab, true, 'secondary');
+
+                    groupEl.appendChild(primaryEl);
+                    groupEl.appendChild(secondaryEl);
+                    tabBar.appendChild(groupEl);
+
+                    renderedTabIds.add(primaryTab.id);
+                    renderedTabIds.add(secondaryTab.id);
+                }
+            });
+
+            window.tabs.forEach(tab => {
+                if (!renderedTabIds.has(tab.id)) {
+                    const tabEl = createTabElement(tab, false, null);
+                    tabBar.appendChild(tabEl);
+                }
+            });
+        };
+
+        function createTabElement(tab, isInSplitView, splitPosition) {
+            const tabEl = document.createElement('div');
+            tabEl.className = 'tab';
+            tabEl.dataset.tabId = tab.id;
+
+            if (isInSplitView) {
+                tabEl.classList.add('in-split-view');
+                if (splitPosition) {
+                    tabEl.classList.add(`split-${splitPosition}`);
+                }
+            }
+
+            const favicon = document.createElement('img');
+            favicon.className = 'tab-favicon';
+            favicon.id = `favicon-${tab.id}`;
+            favicon.alt = '';
+            if (tab.favicon) {
+                favicon.src = tab.favicon;
+                favicon.classList.add('loaded');
+            }
+
+            const titleSpan = document.createElement('span');
+            titleSpan.className = 'tab-title';
+            titleSpan.textContent = tab.title || 'New Tab';
+
+            const audioIndicator = document.createElement('span');
+            audioIndicator.className = 'tab-audio-indicator';
+            audioIndicator.id = `audio-indicator-${tab.id}`;
+            audioIndicator.textContent = '🎧';
+
+            if (window.tabAudioState[tab.id]) {
+                audioIndicator.classList.add('playing');
+            }
+
+            const closeBtn = document.createElement('span');
+            closeBtn.className = 'tab-close';
+            closeBtn.textContent = '×';
+            closeBtn.onclick = (event) => {
+                event.stopPropagation();
+                playUISound('delete');
+                closeTabWithAnimation(tab.id);
+            };
+
+            tabEl.appendChild(favicon);
+            tabEl.appendChild(titleSpan);
+            tabEl.appendChild(audioIndicator);
+            tabEl.appendChild(closeBtn);
+
+            tabEl.onclick = () => {
+                playUISound('cursorMove');
+                window.ipc.postMessage(JSON.stringify({action: 'switch_tab', tabId: tab.id}));
+                window.hideSidebarFocus();
+            };
+
+            return tabEl;
+        }
 
         Object.defineProperty(window, 'ipcMessageToWindow', {
             set: function(value) {

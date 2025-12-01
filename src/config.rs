@@ -108,6 +108,28 @@ fn default_shortcut_toggle_split_view() -> String {
     "Cmd+Shift+S".to_string()
 }
 
+fn normalize_shortcut(value: &str, default: &str) -> String {
+    if value.trim().is_empty() {
+        default.to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+impl KeyboardShortcuts {
+    pub fn normalize(&mut self) {
+        self.new_tab = normalize_shortcut(&self.new_tab, &default_shortcut_new_tab());
+        self.close_tab = normalize_shortcut(&self.close_tab, &default_shortcut_close_tab());
+        self.reload = normalize_shortcut(&self.reload, &default_shortcut_reload());
+        self.focus_url = normalize_shortcut(&self.focus_url, &default_shortcut_focus_url());
+        self.toggle_downloads = normalize_shortcut(&self.toggle_downloads, &default_shortcut_toggle_downloads());
+        self.focus_sidebar = normalize_shortcut(&self.focus_sidebar, &default_shortcut_focus_sidebar());
+        self.find = normalize_shortcut(&self.find, &default_shortcut_find());
+        self.new_window = normalize_shortcut(&self.new_window, &default_shortcut_new_window());
+        self.toggle_split_view = normalize_shortcut(&self.toggle_split_view, &default_shortcut_toggle_split_view());
+    }
+}
+
 impl Default for KeyboardShortcuts {
     fn default() -> Self {
         Self {
@@ -120,6 +142,48 @@ impl Default for KeyboardShortcuts {
             find: default_shortcut_find(),
             new_window: default_shortcut_new_window(),
             toggle_split_view: default_shortcut_toggle_split_view(),
+        }
+    }
+}
+
+/// Performance-related configuration settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PerformanceSettings {
+    #[serde(default = "default_true")]
+    pub lazy_tab_loading: bool,
+    #[serde(default = "default_true")]
+    pub tab_suspension: bool,
+    #[serde(default = "default_suspension_timeout")]
+    pub suspension_timeout_minutes: u64,
+    #[serde(default = "default_true")]
+    pub session_restore: bool,
+    #[serde(default = "default_session_save_interval")]
+    pub session_save_interval_seconds: u64,
+    #[serde(default = "default_max_memory_per_tab")]
+    pub max_memory_per_tab_mb: usize,
+}
+
+fn default_suspension_timeout() -> u64 {
+    15
+}
+
+fn default_session_save_interval() -> u64 {
+    30
+}
+
+fn default_max_memory_per_tab() -> usize {
+    512
+}
+
+impl Default for PerformanceSettings {
+    fn default() -> Self {
+        PerformanceSettings {
+            lazy_tab_loading: true,
+            tab_suspension: true,
+            suspension_timeout_minutes: 15,
+            session_restore: true,
+            session_save_interval_seconds: 30,
+            max_memory_per_tab_mb: 512,
         }
     }
 }
@@ -189,6 +253,8 @@ pub struct Config {
     pub privacy: PrivacySettings,
     #[serde(default)]
     pub ui: UiSettings,
+    #[serde(default)]
+    pub performance: PerformanceSettings,
     #[serde(default = "default_false")]
     pub redirect_youtube_to_invidious: bool,
     #[serde(default = "default_invidious_instance")]
@@ -217,6 +283,7 @@ impl Default for Config {
             default_url: default_start_url(),
             privacy: PrivacySettings::default(),
             ui: UiSettings::default(),
+            performance: PerformanceSettings::default(),
             redirect_youtube_to_invidious: false,
             invidious_instance: default_invidious_instance(),
         }
@@ -230,7 +297,8 @@ impl Config {
         let config_path = Self::get_config_path();
 
         if let Ok(contents) = fs::read_to_string(&config_path) {
-            if let Ok(config) = serde_yaml::from_str(&contents) {
+            if let Ok(mut config) = serde_yaml::from_str::<Config>(&contents) {
+                config.ui.shortcuts.normalize();
                 return config;
             }
         }

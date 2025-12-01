@@ -312,6 +312,145 @@ pub fn get_settings_html() -> String {
                 padding-top: 24px;
                 border-top: 1px solid #222222;
             }}}}
+
+            .shortcut-input {{
+                background: #1a1a1a;
+                border: 1px solid #333333;
+                color: #e8e8e8;
+                padding: 10px 14px;
+                font-size: 13px;
+                font-family: 'gohu', monospace;
+                min-width: 180px;
+                cursor: text;
+                transition: all 0.2s ease;
+                position: relative;
+            }}
+
+            .shortcut-input::placeholder {{
+                color: #666666;
+                opacity: 1;
+            }}
+
+            .shortcut-input:hover {{
+                border-color: #4a4a4a;
+                background: #1f1f1f;
+            }}
+
+            .shortcut-input.recording {{
+                border-color: #ffffff;
+                background: #222222;
+                animation: pulse 1.5s ease-in-out infinite;
+            }}
+
+            .shortcut-input.conflict {{
+                border-color: #ff6b6b;
+                background: rgba(255, 107, 107, 0.1);
+            }}
+
+            @keyframes pulse {{
+                0%, 100% {{ box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.4); }}
+                50% {{ box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1); }}
+            }}
+
+            .conflict-warning {{
+                display: none;
+                color: #ff6b6b;
+                font-size: 12px;
+                margin-top: 4px;
+                font-family: 'gohu', monospace;
+            }}
+
+            .conflict-warning.show {{
+                display: block;
+            }}
+
+            .update-button {{
+                background: #ffffff;
+                color: #000000;
+                border: none;
+                padding: 12px 24px;
+                font-size: 14px;
+                font-family: 'gohu', monospace;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                width: 100%;
+                margin-bottom: 12px;
+            }}
+
+            .update-button:hover {{
+                background: #e8e8e8;
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(255, 255, 255, 0.15);
+            }}
+
+            .update-button:disabled {{
+                background: #333333;
+                color: #666666;
+                cursor: not-allowed;
+                transform: none;
+            }}
+
+            .update-status {{
+                font-size: 13px;
+                color: #888888;
+                font-family: 'gohu', monospace;
+                margin-top: 12px;
+                line-height: 1.6;
+            }}
+
+            .update-status.checking {{
+                color: #ffffff;
+            }}
+
+            .update-status.available {{
+                color: #4ade80;
+            }}
+
+            .update-status.error {{
+                color: #ff6b6b;
+            }}
+
+            .update-progress {{
+                width: 100%;
+                height: 6px;
+                background: #2a2a2a;
+                margin-top: 12px;
+                overflow: hidden;
+                display: none;
+            }}
+
+            .update-progress.show {{
+                display: block;
+            }}
+
+            .update-progress-bar {{
+                height: 100%;
+                background: #ffffff;
+                width: 0%;
+                transition: width 0.3s ease;
+            }}
+
+            .release-notes {{
+                background: #1a1a1a;
+                border: 1px solid #333333;
+                padding: 16px;
+                margin-top: 12px;
+                font-size: 12px;
+                line-height: 1.8;
+                max-height: 200px;
+                overflow-y: auto;
+                display: none;
+            }}
+
+            .release-notes.show {{
+                display: block;
+            }}
+
+            .version-info {{
+                font-size: 13px;
+                color: #666666;
+                font-family: 'gohu', monospace;
+            }}
         </style>
     "#,
         fonts::get_gohu_font_face(),
@@ -320,7 +459,113 @@ pub fn get_settings_html() -> String {
 
     let script = r#"
         <script>
+            const shortcuts = {
+                'new_tab': '',
+                'close_tab': '',
+                'reload': '',
+                'focus_url': '',
+                'toggle_downloads': '',
+                'focus_sidebar': '',
+                'find': '',
+                'new_window': '',
+                'toggle_split_view': ''
+            };
+
+            let recordingKey = null;
+
+            function formatShortcut(key) {
+                const parts = [];
+                if (key.includes('Cmd') || key.includes('Meta')) parts.push('Cmd');
+                if (key.includes('Ctrl')) parts.push('Ctrl');
+                if (key.includes('Alt') || key.includes('Option')) parts.push('Alt');
+                if (key.includes('Shift')) parts.push('Shift');
+
+                const letter = key.split('+').pop();
+                if (letter && !['Cmd', 'Ctrl', 'Alt', 'Shift', 'Meta', 'Option'].includes(letter)) {
+                    parts.push(letter.toUpperCase());
+                }
+
+                return parts.join('+');
+            }
+
+            function detectConflicts() {
+                const values = Object.values(shortcuts).filter(v => v);
+                const duplicates = values.filter((v, i) => values.indexOf(v) !== i);
+
+                for (const [key, value] of Object.entries(shortcuts)) {
+                    const input = document.getElementById(`shortcut-${key}`);
+                    const warning = document.getElementById(`conflict-${key}`);
+
+                    if (duplicates.includes(value) && value) {
+                        input.classList.add('conflict');
+                        warning.classList.add('show');
+                        const otherKey = Object.keys(shortcuts).find(k => k !== key && shortcuts[k] === value);
+                        if (otherKey) {
+                            warning.textContent = `Conflict with ${otherKey.replace(/_/g, ' ')}`;
+                        }
+                    } else {
+                        input.classList.remove('conflict');
+                        warning.classList.remove('show');
+                    }
+                }
+            }
+
+            function startRecording(key) {
+                if (recordingKey && recordingKey !== key) {
+                    stopRecording(recordingKey);
+                }
+
+                recordingKey = key;
+                const input = document.getElementById(`shortcut-${key}`);
+                input.classList.add('recording');
+                input.value = 'Press keys...';
+                input.focus();
+            }
+
+            function stopRecording(key) {
+                const input = document.getElementById(`shortcut-${key}`);
+                input.classList.remove('recording');
+                input.value = shortcuts[key] || '';
+                recordingKey = null;
+            }
+
+            function recordShortcut(e, key) {
+                if (!recordingKey || recordingKey !== key) return;
+
+                e.preventDefault();
+                e.stopPropagation();
+
+                const modifiers = [];
+                if (e.metaKey || e.key === 'Meta') modifiers.push('Cmd');
+                if (e.ctrlKey || e.key === 'Control') modifiers.push('Ctrl');
+                if (e.altKey || e.key === 'Alt') modifiers.push('Alt');
+                if (e.shiftKey || e.key === 'Shift') modifiers.push('Shift');
+
+                if (!['Meta', 'Control', 'Alt', 'Shift'].includes(e.key)) {
+                    let keyName = e.key;
+                    if (keyName.length === 1) {
+                        keyName = keyName.toUpperCase();
+                    }
+
+                    const shortcut = modifiers.length > 0
+                        ? `${modifiers.join('+')}+${keyName}`
+                        : keyName;
+
+                    shortcuts[key] = shortcut;
+                    const input = document.getElementById(`shortcut-${key}`);
+                    input.value = shortcut;
+                    stopRecording(key);
+                    detectConflicts();
+                }
+            }
+
             function saveSettings() {
+                const hasConflicts = document.querySelectorAll('.shortcut-input.conflict').length > 0;
+                if (hasConflicts) {
+                    alert('Please resolve shortcut conflicts before saving.');
+                    return;
+                }
+
                 const settings = {
                     defaultUrl: document.getElementById('default-url').value,
                     searchEngine: document.getElementById('search-engine').value,
@@ -329,6 +574,7 @@ pub fn get_settings_html() -> String {
                     blockTrackers: document.getElementById('block-trackers').checked,
                     blockFingerprinting: document.getElementById('block-fingerprinting').checked,
                     blockCookies: document.getElementById('block-cookies').checked,
+                    shortcuts: shortcuts
                 };
 
                 console.log('Saving settings:', settings);
@@ -341,12 +587,16 @@ pub fn get_settings_html() -> String {
                 window.ipc.postMessage(message);
 
                 const indicator = document.getElementById('save-indicator');
+                indicator.textContent = 'Saved - Restart required';
                 indicator.classList.remove('hide');
                 indicator.classList.add('show');
                 setTimeout(() => {
                     indicator.classList.remove('show');
                     indicator.classList.add('hide');
-                }, 2000);
+                    setTimeout(() => {
+                        indicator.textContent = 'Saved';
+                    }, 300);
+                }, 3000);
             }
 
             function loadSettings() {
@@ -356,6 +606,104 @@ pub fn get_settings_html() -> String {
                 });
                 window.ipc.postMessage(message);
             }
+
+            function checkForUpdates() {
+                const button = document.getElementById('check-update-btn');
+                const status = document.getElementById('update-status');
+                const progressBar = document.getElementById('update-progress');
+                const releaseNotes = document.getElementById('release-notes');
+
+                button.disabled = true;
+                button.textContent = 'Checking...';
+                status.className = 'update-status checking';
+                status.textContent = 'Checking for updates...';
+                progressBar.classList.remove('show');
+                releaseNotes.classList.remove('show');
+
+                const message = JSON.stringify({
+                    action: 'check_for_updates'
+                });
+
+                window.ipc.postMessage(message);
+            }
+
+            function installUpdate() {
+                const button = document.getElementById('install-update-btn');
+                const progressBar = document.getElementById('update-progress');
+                const progressFill = document.getElementById('update-progress-bar');
+
+                button.disabled = true;
+                button.textContent = 'Installing...';
+                progressBar.classList.add('show');
+                progressFill.style.width = '0%';
+
+                const message = JSON.stringify({
+                    action: 'install_update'
+                });
+
+                window.ipc.postMessage(message);
+            }
+
+            window.updateAvailable = function(info) {
+                const button = document.getElementById('check-update-btn');
+                const installBtn = document.getElementById('install-update-btn');
+                const status = document.getElementById('update-status');
+                const releaseNotes = document.getElementById('release-notes');
+
+                button.disabled = false;
+                button.textContent = 'Check for Updates';
+
+                status.className = 'update-status available';
+                status.innerHTML = `New version available: ${info.version}<br>Released: ${new Date(info.published_at).toLocaleDateString()}`;
+
+                if (info.release_notes) {
+                    releaseNotes.innerHTML = `<strong>Release Notes:</strong><br>${info.release_notes.replace(/\n/g, '<br>')}`;
+                    releaseNotes.classList.add('show');
+                }
+
+                installBtn.style.display = 'block';
+            };
+
+            window.updateProgress = function(downloaded, total) {
+                const progressFill = document.getElementById('update-progress-bar');
+                const percentage = Math.round((downloaded / total) * 100);
+                progressFill.style.width = `${percentage}%`;
+            };
+
+            window.updateInstalled = function() {
+                const button = document.getElementById('install-update-btn');
+                const status = document.getElementById('update-status');
+                const progressBar = document.getElementById('update-progress');
+
+                button.disabled = false;
+                button.textContent = 'Restart to Apply';
+                progressBar.classList.remove('show');
+
+                status.className = 'update-status available';
+                status.textContent = 'Update installed successfully! Restart Calm to apply.';
+            };
+
+            window.updateError = function(error) {
+                const button = document.getElementById('check-update-btn');
+                const status = document.getElementById('update-status');
+
+                button.disabled = false;
+                button.textContent = 'Check for Updates';
+
+                status.className = 'update-status error';
+                status.textContent = `Error: ${error}`;
+            };
+
+            window.noUpdateAvailable = function() {
+                const button = document.getElementById('check-update-btn');
+                const status = document.getElementById('update-status');
+
+                button.disabled = false;
+                button.textContent = 'Check for Updates';
+
+                status.className = 'update-status';
+                status.textContent = 'You are running the latest version.';
+            };
 
             window.updateSettings = function(settings) {
                 console.log('Received settings:', settings);
@@ -386,6 +734,16 @@ pub fn get_settings_html() -> String {
                 if (settings.blockCookies !== undefined) {
                     console.log('Setting block cookies to:', settings.blockCookies);
                     document.getElementById('block-cookies').checked = settings.blockCookies;
+                }
+                if (settings.shortcuts) {
+                    for (const [key, value] of Object.entries(settings.shortcuts)) {
+                        shortcuts[key] = value;
+                        const input = document.getElementById(`shortcut-${key}`);
+                        if (input) {
+                            input.value = value || '';
+                        }
+                    }
+                    detectConflicts();
                 }
             };
 
@@ -572,6 +930,165 @@ pub fn get_settings_html() -> String {
                 <div class="setting-control">
                     <input type="checkbox" id="block-cookies" checked>
                 </div>
+            </div>
+        </div>
+
+        <div class="setting-section">
+            <h2>Keyboard Shortcuts</h2>
+            <p style="color: #888; font-size: 12px; margin-bottom: 16px; font-family: 'gohu', monospace;">Click on a shortcut to record new keys. Conflicts are highlighted in red.</p>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">New Tab</div>
+                    <div class="setting-description">Open a new tab</div>
+                </div>
+                <div class="setting-control">
+                    <input type="text" class="shortcut-input" id="shortcut-new_tab" readonly
+                           onclick="startRecording('new_tab')"
+                           onkeydown="recordShortcut(event, 'new_tab')"
+                           onblur="stopRecording('new_tab')"
+                           placeholder="Cmd+T">
+                    <div class="conflict-warning" id="conflict-new_tab"></div>
+                </div>
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">Close Tab</div>
+                    <div class="setting-description">Close the current tab</div>
+                </div>
+                <div class="setting-control">
+                    <input type="text" class="shortcut-input" id="shortcut-close_tab" readonly
+                           onclick="startRecording('close_tab')"
+                           onkeydown="recordShortcut(event, 'close_tab')"
+                           onblur="stopRecording('close_tab')"
+                           placeholder="Cmd+W">
+                    <div class="conflict-warning" id="conflict-close_tab"></div>
+                </div>
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">Reload Page</div>
+                    <div class="setting-description">Reload the current page</div>
+                </div>
+                <div class="setting-control">
+                    <input type="text" class="shortcut-input" id="shortcut-reload" readonly
+                           onclick="startRecording('reload')"
+                           onkeydown="recordShortcut(event, 'reload')"
+                           onblur="stopRecording('reload')"
+                           placeholder="Cmd+R">
+                    <div class="conflict-warning" id="conflict-reload"></div>
+                </div>
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">Focus URL Bar</div>
+                    <div class="setting-description">Focus the URL bar to navigate</div>
+                </div>
+                <div class="setting-control">
+                    <input type="text" class="shortcut-input" id="shortcut-focus_url" readonly
+                           onclick="startRecording('focus_url')"
+                           onkeydown="recordShortcut(event, 'focus_url')"
+                           onblur="stopRecording('focus_url')"
+                           placeholder="Cmd+L">
+                    <div class="conflict-warning" id="conflict-focus_url"></div>
+                </div>
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">Toggle Downloads</div>
+                    <div class="setting-description">Show/hide downloads sidebar</div>
+                </div>
+                <div class="setting-control">
+                    <input type="text" class="shortcut-input" id="shortcut-toggle_downloads" readonly
+                           onclick="startRecording('toggle_downloads')"
+                           onkeydown="recordShortcut(event, 'toggle_downloads')"
+                           onblur="stopRecording('toggle_downloads')"
+                           placeholder="Cmd+J">
+                    <div class="conflict-warning" id="conflict-toggle_downloads"></div>
+                </div>
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">Focus Sidebar</div>
+                    <div class="setting-description">Focus the sidebar tabs</div>
+                </div>
+                <div class="setting-control">
+                    <input type="text" class="shortcut-input" id="shortcut-focus_sidebar" readonly
+                           onclick="startRecording('focus_sidebar')"
+                           onkeydown="recordShortcut(event, 'focus_sidebar')"
+                           onblur="stopRecording('focus_sidebar')"
+                           placeholder="Cmd+E">
+                    <div class="conflict-warning" id="conflict-focus_sidebar"></div>
+                </div>
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">Find in Page</div>
+                    <div class="setting-description">Open find in page</div>
+                </div>
+                <div class="setting-control">
+                    <input type="text" class="shortcut-input" id="shortcut-find" readonly
+                           onclick="startRecording('find')"
+                           onkeydown="recordShortcut(event, 'find')"
+                           onblur="stopRecording('find')"
+                           placeholder="Cmd+F">
+                    <div class="conflict-warning" id="conflict-find"></div>
+                </div>
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">New Window</div>
+                    <div class="setting-description">Open a new browser window</div>
+                </div>
+                <div class="setting-control">
+                    <input type="text" class="shortcut-input" id="shortcut-new_window" readonly
+                           onclick="startRecording('new_window')"
+                           onkeydown="recordShortcut(event, 'new_window')"
+                           onblur="stopRecording('new_window')"
+                           placeholder="Cmd+N">
+                    <div class="conflict-warning" id="conflict-new_window"></div>
+                </div>
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">Toggle Split View</div>
+                    <div class="setting-description">Enable/disable split view mode</div>
+                </div>
+                <div class="setting-control">
+                    <input type="text" class="shortcut-input" id="shortcut-toggle_split_view" readonly
+                           onclick="startRecording('toggle_split_view')"
+                           onkeydown="recordShortcut(event, 'toggle_split_view')"
+                           onblur="stopRecording('toggle_split_view')"
+                           placeholder="Cmd+Shift+S">
+                    <div class="conflict-warning" id="conflict-toggle_split_view"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="setting-section">
+            <h2>Updates</h2>
+            <div class="setting-item" style="flex-direction: column; align-items: stretch;">
+                <div style="margin-bottom: 16px;">
+                    <div class="version-info">Current version: 0.1.0</div>
+                </div>
+                <button class="update-button" id="check-update-btn" onclick="checkForUpdates()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges" style="display: inline-block; vertical-align: middle; margin-right: 8px;">
+                        <path d="M16 2h-2v2h2v2H4v2H2v5h2V8h12v2h-2v2h2v-2h2V8h2V6h-2V4h-2V2zM6 20h2v2h2v-2H8v-2h12v-2h2v-5h-2v5H8v-2h2v-2H8v2H6v2H4v2h2v2z"/>
+                    </svg>
+                    Check for Updates
+                </button>
+                <button class="update-button" id="install-update-btn" onclick="installUpdate()" style="display: none;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges" style="display: inline-block; vertical-align: middle; margin-right: 8px;">
+                        <path d="M12 2v12h2v-2h2v-2h2v-2h2v8h-2v2h-2v2H6v-2H4v-2H2v-8h2v2h2v2h2v2h2V2h2zm-2 18h4v-2h-4v2z"/>
+                    </svg>
+                    Install Update
+                </button>
+                <div class="update-progress" id="update-progress">
+                    <div class="update-progress-bar" id="update-progress-bar"></div>
+                </div>
+                <div class="update-status" id="update-status">
+                    Click "Check for Updates" to see if a new version is available.
+                </div>
+                <div class="release-notes" id="release-notes"></div>
             </div>
         </div>
 
