@@ -124,6 +124,7 @@ impl WindowManager {
                 .map_err(|e| format!("Failed to create tab bar: {}", e))?,
         );
 
+        let tab_bar_for_downloads = Rc::clone(&tab_bar_webview);
         let download_overlay = Rc::new(
             WebViewBuilder::new()
                 .with_html(&ui::get_download_overlay_html())
@@ -137,6 +138,45 @@ impl WindowManager {
                         .into(),
                 })
                 .with_visible(false)
+                .with_ipc_handler(move |request| {
+                    let body = request.body();
+                    if let Ok(data) = serde_json::from_str::<serde_json::Value>(body) {
+                        match data["action"].as_str() {
+                            Some("update_download_progress") => {
+                                if let Some(percent) = data["percent"].as_i64() {
+                                    let script = format!(
+                                        "if (window.updateDownloadProgress) {{ window.updateDownloadProgress({}); }}",
+                                        percent
+                                    );
+                                    let _ = tab_bar_for_downloads.evaluate_script(&script);
+                                }
+                            }
+                            Some("update_download_count") => {
+                                if let Some(count) = data["count"].as_i64() {
+                                    let in_progress = data["inProgress"].as_bool().unwrap_or(false);
+                                    let script = format!(
+                                        "if (window.updateDownloadCount) {{ window.updateDownloadCount({}, {}); }}",
+                                        count, in_progress
+                                    );
+                                    let _ = tab_bar_for_downloads.evaluate_script(&script);
+                                }
+                            }
+                            Some("reveal_in_finder") => {
+                                if let Some(file_path) = data["filePath"].as_str() {
+                                    #[cfg(target_os = "macos")]
+                                    {
+                                        use std::process::Command;
+                                        let _ = Command::new("open")
+                                            .arg("-R")
+                                            .arg(file_path)
+                                            .spawn();
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                })
                 .build_as_child(browser_window.window.as_ref())
                 .map_err(|e| format!("Failed to create download overlay: {}", e))?,
         );

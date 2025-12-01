@@ -46,10 +46,17 @@ pub fn get_tab_bar_html_structure() -> &'static str {
         <div id="tab-bar"></div>
         <div class="bottom-controls">
             <button class="downloads-btn" id="downloads-btn" onclick="playUISound('cursorMove'); toggleDownloads()" title="Downloads">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
-                    <path d="M13 17V3h-2v10H9v-2H7v2h2v2h2v2h2zm8 2v-4h-2v4H5v-4H3v6h18v-2zm-8-6v2h2v-2h2v-2h-2v2h-2z"/>
-                </svg>
-                <span class="download-badge" id="download-badge" style="display: none;">0</span>
+                <div class="download-btn-content" id="download-btn-content">
+                    <div class="download-icon-wrapper">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">
+                            <path d="M13 2h-2v9H9V9H7v2h2v2h2v2h2v-2h2v-2h2V9h-2v2h-2V2zm8 17v-2h-2v2H5v-2H3v4h18v-2z"/>
+                        </svg>
+                    </div>
+                    <span class="download-badge" id="download-badge">0</span>
+                </div>
+                <div class="download-btn-progress" id="download-btn-progress" style="display: none;">
+                    <div class="download-btn-progress-fill" id="download-btn-progress-fill"></div>
+                </div>
             </button>
             <button class="settings-btn" id="settings-btn" onclick="playUISound('cursorMove'); openSettings()" title="Settings">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges">

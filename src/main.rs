@@ -16,7 +16,7 @@ mod window;
 use muda::{Menu, MenuItem, PredefinedMenuItem, Submenu, accelerator::Accelerator};
 use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Instant};
 use tao::{
-    event::{ElementState, Event, WindowEvent},
+    event::{ElementState, Event, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     keyboard::ModifiersState,
     window::WindowId,
@@ -555,6 +555,32 @@ fn main() -> wry::Result<()> {
                                 &config,
                                 &last_g_key_time,
                             );
+                        }
+                    }
+                }
+            }
+            Event::WindowEvent {
+                window_id,
+                event: WindowEvent::MouseInput {
+                    state,
+                    button,
+                    ..
+                },
+                ..
+            } => {
+                if state == ElementState::Pressed {
+                    let windows = windows_ref.borrow();
+                    if let Some(components) = windows.get(&window_id) {
+                        match button {
+                            MouseButton::Other(8) | MouseButton::Other(3) | MouseButton::Other(275) => {
+                                debug_log!("Mouse back button pressed");
+                                components.tab_manager.borrow().navigate_back();
+                            }
+                            MouseButton::Other(9) | MouseButton::Other(4) | MouseButton::Other(276) => {
+                                debug_log!("Mouse forward button pressed");
+                                components.tab_manager.borrow().navigate_forward();
+                            }
+                            _ => {}
                         }
                     }
                 }

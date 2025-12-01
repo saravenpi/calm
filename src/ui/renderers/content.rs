@@ -104,7 +104,6 @@ pub fn get_content_renderer() -> &'static str {
         }
         .feed-title {
             font-size: 32px;
-            font-weight: 700;
             color: #ffffff;
             margin-bottom: 12px;
         }
@@ -154,7 +153,6 @@ pub fn get_content_renderer() -> &'static str {
         }
         .item-title {
             font-size: 22px;
-            font-weight: 600;
             margin-bottom: 12px;
         }
         .item-title a {
@@ -187,7 +185,6 @@ pub fn get_content_renderer() -> &'static str {
             padding: 4px 10px;
             border-radius: 4px;
             font-size: 12px;
-            font-weight: 500;
             display: inline-block;
             margin-bottom: 12px;
         }
@@ -329,7 +326,6 @@ pub fn get_content_renderer() -> &'static str {
             padding: 6px 12px;
             border-radius: 6px;
             font-size: 13px;
-            font-weight: 600;
         }
         .stats {
             color: #999;
@@ -362,7 +358,6 @@ pub fn get_content_renderer() -> &'static str {
         }
         .json-key {
             color: #667eea;
-            font-weight: 500;
         }
         .json-string {
             color: #38ef7d;
@@ -372,7 +367,6 @@ pub fn get_content_renderer() -> &'static str {
         }
         .json-boolean {
             color: #e74c3c;
-            font-weight: 600;
         }
         .json-null {
             color: #999;
@@ -386,7 +380,6 @@ pub fn get_content_renderer() -> &'static str {
             border-radius: 6px;
             cursor: pointer;
             font-size: 13px;
-            font-weight: 500;
             transition: all 0.2s;
         }
         .copy-btn:hover {

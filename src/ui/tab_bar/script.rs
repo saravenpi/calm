@@ -90,6 +90,11 @@ pub fn get_tab_bar_script() -> &'static str {
             tabEl.className = 'tab opening';
             tabEl.dataset.tabId = tabId;
 
+            const favicon = document.createElement('img');
+            favicon.className = 'tab-favicon';
+            favicon.id = `favicon-${tabId}`;
+            favicon.alt = '';
+
             const titleSpan = document.createElement('span');
             titleSpan.className = 'tab-title';
             titleSpan.textContent = tab.title;
@@ -97,7 +102,7 @@ pub fn get_tab_bar_script() -> &'static str {
             const audioIndicator = document.createElement('span');
             audioIndicator.className = 'tab-audio-indicator';
             audioIndicator.id = `audio-indicator-${tabId}`;
-            audioIndicator.textContent = '🔊';
+            audioIndicator.textContent = '🎧';
 
             const closeBtn = document.createElement('span');
             closeBtn.className = 'tab-close';
@@ -108,6 +113,7 @@ pub fn get_tab_bar_script() -> &'static str {
                 closeTabWithAnimation(tabId);
             };
 
+            tabEl.appendChild(favicon);
             tabEl.appendChild(titleSpan);
             tabEl.appendChild(audioIndicator);
             tabEl.appendChild(closeBtn);
@@ -132,9 +138,7 @@ pub fn get_tab_bar_script() -> &'static str {
             const tabEl = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
             if (tabEl) {
                 tabEl.classList.add('closing');
-                setTimeout(() => {
-                    window.ipc.postMessage(JSON.stringify({action: 'close_tab', tabId: tabId}));
-                }, 300);
+                window.ipc.postMessage(JSON.stringify({action: 'close_tab', tabId: tabId}));
             }
         };
 
@@ -171,6 +175,14 @@ pub fn get_tab_bar_script() -> &'static str {
             }
         };
 
+        window.updateTabFavicon = function(tabId, faviconUrl) {
+            const favicon = document.getElementById(`favicon-${tabId}`);
+            if (favicon && faviconUrl) {
+                favicon.src = faviconUrl;
+                favicon.classList.add('loaded');
+            }
+        };
+
         window.updateTabAudioState = function(tabId, isPlaying) {
             window.tabAudioState[tabId] = isPlaying;
             const indicator = document.getElementById(`audio-indicator-${tabId}`);
@@ -179,6 +191,17 @@ pub fn get_tab_bar_script() -> &'static str {
                     indicator.classList.add('playing');
                 } else {
                     indicator.classList.remove('playing');
+                }
+            }
+        };
+
+        window.updateTabLoadingState = function(tabId, isLoading) {
+            const tabEl = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
+            if (tabEl) {
+                if (isLoading) {
+                    tabEl.classList.add('loading');
+                } else {
+                    tabEl.classList.remove('loading');
                 }
             }
         };
@@ -203,19 +226,39 @@ pub fn get_tab_bar_script() -> &'static str {
             window.ipc.postMessage(JSON.stringify({action: 'open_settings'}));
         };
 
-        window.updateDownloadCount = function(count) {
+        window.updateDownloadCount = function(count, inProgress) {
             const badge = document.getElementById('download-badge');
             const btn = document.getElementById('downloads-btn');
             if (badge && btn) {
-                if (count > 0) {
-                    badge.textContent = count;
-                    badge.style.display = 'flex';
+                if (inProgress) {
+                    badge.innerHTML = '<span class="download-badge-spinner"></span>';
                     btn.classList.add('has-downloads');
-                    btn.classList.add('pulse');
-                    setTimeout(() => btn.classList.remove('pulse'), 600);
+                } else if (count > 0) {
+                    const currentCount = parseInt(badge.textContent) || 0;
+                    if (currentCount !== count) {
+                        badge.classList.add('rolling');
+                        setTimeout(() => {
+                            badge.textContent = count;
+                            badge.classList.remove('rolling');
+                        }, 150);
+                    }
+                    btn.classList.add('has-downloads');
                 } else {
-                    badge.style.display = 'none';
                     btn.classList.remove('has-downloads');
+                }
+            }
+        };
+
+        window.updateDownloadProgress = function(percent) {
+            const progressBar = document.getElementById('download-btn-progress');
+            const progressFill = document.getElementById('download-btn-progress-fill');
+            if (progressBar && progressFill) {
+                if (percent >= 0 && percent < 100) {
+                    progressBar.style.display = 'block';
+                    progressFill.style.width = percent + '%';
+                } else {
+                    progressBar.style.display = 'none';
+                    progressFill.style.width = '0%';
                 }
             }
         };

@@ -13,7 +13,7 @@ pub fn get_loading_animation() -> &'static str {
                     left: 0;
                     width: 100%;
                     height: 100%;
-                    background: #0a0a0a;
+                    background: #101010;
                     display: flex;
                     align-items: center;
                     justify-content: center;

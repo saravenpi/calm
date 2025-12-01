@@ -16,7 +16,7 @@ pub fn get_styles() -> String {
 
         body {{
             font-family: 'gohu', monospace;
-            background: #000000;
+            background: #101010;
             overflow: hidden;
             margin: 0;
             padding: 0;
@@ -28,10 +28,10 @@ pub fn get_styles() -> String {
         .downloads-panel {{
             width: 100%;
             height: 100vh;
-            background: #000000;
+            background: #101010;
             display: flex;
             flex-direction: column;
-            border-left: 2px solid #ffffff;
+            border-left: 2px solid #333333;
             transform: translateX(100%);
             transition: transform 0.1s linear;
             position: fixed;
@@ -42,19 +42,18 @@ pub fn get_styles() -> String {
         .downloads-content {{
             width: 100%;
             height: 100%;
-            background: #000000;
+            background: #101010;
             display: flex;
             flex-direction: column;
             overflow: hidden;
         }}
 
         .downloads-header {{
-            padding: 8px;
+            padding: 16px;
             font-size: 11px;
-            font-weight: bold;
             color: #ffffff;
-            background: #000000;
-            border-bottom: 1px solid #ffffff;
+            background: #101010;
+            border-bottom: 1px solid #333333;
             flex-shrink: 0;
         }}
 
@@ -69,7 +68,7 @@ pub fn get_styles() -> String {
         }}
 
         .downloads-list::-webkit-scrollbar-track {{
-            background: #000000;
+            background: #101010;
         }}
 
         .downloads-list::-webkit-scrollbar-thumb {{
@@ -89,7 +88,7 @@ pub fn get_styles() -> String {
 
         .download-item {{
             background: #1a1a1a;
-            border: 1px solid #ffffff;
+            border-left: 3px solid #333333;
             padding: 8px;
             margin-bottom: 4px;
             color: #ffffff;
@@ -100,18 +99,33 @@ pub fn get_styles() -> String {
         .download-item:hover {{
             background: #333333;
             color: #ffffff;
+            border-left-color: #ffffff;
         }}
 
         .download-item.completed {{
-            background: #1a4d1a;
-            color: #ffffff;
-            border-color: #00ff00;
+            background: #151515;
+            border-left-color: #4a7c4a;
+        }}
+
+        .download-item.completed .download-status {{
+            color: #4a7c4a;
+        }}
+
+        .download-item.completed .download-status svg {{
+            fill: #4a7c4a;
         }}
 
         .download-item.failed {{
-            background: #4d1a1a;
-            color: #ffffff;
-            border-color: #ff0000;
+            background: #151515;
+            border-left-color: #7c4a4a;
+        }}
+
+        .download-item.failed .download-status {{
+            color: #7c4a4a;
+        }}
+
+        .download-item.failed .download-status svg {{
+            fill: #7c4a4a;
         }}
 
         .download-item.removing {{
@@ -121,7 +135,6 @@ pub fn get_styles() -> String {
         .download-name {{
             color: inherit;
             font-size: 11px;
-            font-weight: bold;
             margin-bottom: 4px;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -148,21 +161,21 @@ pub fn get_styles() -> String {
                 90deg,
                 #ffffff 0px,
                 #ffffff 4px,
-                #000000 4px,
-                #000000 8px
+                #101010 4px,
+                #101010 8px
             );
             background-size: 16px 100%;
             animation: indeterminateProgress 0.5s infinite linear;
         }}
 
         .download-progress-fill.completed {{
-            background: #00ff00 !important;
+            background: #4a7c4a !important;
             animation: none !important;
             width: 100% !important;
         }}
 
         .download-progress-fill.failed {{
-            background: #ff0000 !important;
+            background: #7c4a4a !important;
             animation: none !important;
             width: 100% !important;
         }}
@@ -214,6 +227,7 @@ pub fn get_styles() -> String {
             justify-content: space-between;
             align-items: center;
             margin-bottom: 4px;
+            gap: 12px;
         }}
 
         .download-folder-icon {{
@@ -259,31 +273,32 @@ pub fn get_styles() -> String {
 
         .downloads-footer {{
             padding: 8px;
-            border-top: 1px solid #ffffff;
-            background: #000000;
+            border-top: 1px solid #333333;
+            background: #101010;
             flex-shrink: 0;
-            display: flex;
-            justify-content: center;
         }}
 
         .clear-history-btn {{
             background: #1a1a1a;
             color: #ffffff;
-            border: 1px solid #ffffff;
+            border: 1px solid #333333;
             padding: 6px 12px;
             font-size: 11px;
             font-family: 'gohu', monospace;
             cursor: pointer;
             transition: background 0.05s linear;
+            width: 100%;
         }}
 
         .clear-history-btn:hover {{
             background: #333333;
+            border-color: #ffffff;
         }}
 
         .clear-history-btn:active {{
             background: #ffffff;
             color: #000000;
+            border-color: #ffffff;
         }}
     "#,
         fonts::get_gohu_font_face()

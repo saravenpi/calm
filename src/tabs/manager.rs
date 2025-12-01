@@ -150,8 +150,10 @@ impl TabManager {
         let download_overlay_completed = self.download_overlay.clone();
         let download_overlay_progress = self.download_overlay.clone();
         let tab_bar_for_ipc = self.tab_bar_webview.clone();
+        let tab_bar_for_page_load = self.tab_bar_webview.clone();
         let current_urls_for_ipc = Arc::clone(&self.current_urls);
         let tab_id_for_ipc = tab_id;
+        let tab_id_for_page_load = tab_id;
         let active_tab_id_for_ipc = Arc::clone(&self.active_tab_id_shared);
         let config_for_ipc = std::rc::Rc::clone(&self.config);
 
@@ -169,6 +171,19 @@ impl TabManager {
             .with_user_agent(privacy::get_privacy_user_agent())
             .with_devtools(true)
             .with_clipboard(true)
+            .with_on_page_load_handler(move |event, _url| {
+                if let Some(ref webview) = tab_bar_for_page_load {
+                    let script = match event {
+                        wry::PageLoadEvent::Started => {
+                            format!("if (window.updateTabLoadingState) {{ window.updateTabLoadingState({}, true); }}", tab_id_for_page_load)
+                        }
+                        wry::PageLoadEvent::Finished => {
+                            format!("if (window.updateTabLoadingState) {{ window.updateTabLoadingState({}, false); }}", tab_id_for_page_load)
+                        }
+                    };
+                    let _ = webview.evaluate_script(&script);
+                }
+            })
             .with_asynchronous_custom_protocol("calmfile".into(), move |_webview_id, request, responder| {
                 let uri = request.uri().to_string();
                 let path = uri.trim_start_matches("calmfile://localhost");
@@ -262,6 +277,102 @@ console.log('[INIT] window exists?', typeof window !== 'undefined');
 })();
 
 console.log('[INIT] Console override installed');
+
+(function() {
+    let isAudioPlaying = false;
+
+    function checkAudioPlaying() {
+        const mediaElements = document.querySelectorAll('audio, video');
+        let hasPlayingMedia = false;
+
+        for (const media of mediaElements) {
+            if (!media.paused && !media.muted && media.volume > 0) {
+                hasPlayingMedia = true;
+                break;
+            }
+        }
+
+        if (hasPlayingMedia !== isAudioPlaying) {
+            isAudioPlaying = hasPlayingMedia;
+            if (window.ipc) {
+                window.ipc.postMessage(JSON.stringify({
+                    action: 'audio_state_changed',
+                    isPlaying: isAudioPlaying
+                }));
+            }
+        }
+    }
+
+    document.addEventListener('play', checkAudioPlaying, true);
+    document.addEventListener('pause', checkAudioPlaying, true);
+    document.addEventListener('volumechange', checkAudioPlaying, true);
+
+    const observer = new MutationObserver(() => {
+        checkAudioPlaying();
+    });
+
+    if (document.body) {
+        observer.observe(document.body, { childList: true, subtree: true });
+    } else {
+        document.addEventListener('DOMContentLoaded', () => {
+            observer.observe(document.body, { childList: true, subtree: true });
+        });
+    }
+
+    setInterval(checkAudioPlaying, 1000);
+
+    console.log('[INIT] Audio detection installed');
+})();
+
+(function() {
+    function updateFavicon() {
+        const iconLink = document.querySelector('link[rel~="icon"]') ||
+                        document.querySelector('link[rel~="shortcut icon"]') ||
+                        document.querySelector('link[rel~="apple-touch-icon"]');
+
+        let faviconUrl = null;
+
+        if (iconLink && iconLink.href) {
+            faviconUrl = iconLink.href;
+        } else {
+            const baseUrl = window.location.origin;
+            faviconUrl = baseUrl + '/favicon.ico';
+        }
+
+        if (faviconUrl && window.ipc) {
+            window.ipc.postMessage(JSON.stringify({
+                action: 'update_favicon',
+                favicon: faviconUrl
+            }));
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', updateFavicon);
+    } else {
+        updateFavicon();
+    }
+
+    window.addEventListener('load', updateFavicon);
+
+    const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            if (mutation.type === 'childList') {
+                const addedNodes = Array.from(mutation.addedNodes);
+                if (addedNodes.some(node => node.tagName === 'LINK' && node.rel && node.rel.includes('icon'))) {
+                    updateFavicon();
+                    break;
+                }
+            }
+        }
+    });
+
+    if (document.head) {
+        observer.observe(document.head, { childList: true, subtree: true });
+    }
+
+    console.log('[INIT] Favicon detection installed');
+})();
                 "#;
 
                 let invidious_instance = self.config.borrow().invidious_instance.clone();
@@ -516,6 +627,18 @@ console.log('[INIT] Console override installed');
                                 }
                             }
                         }
+                        Some("update_favicon") => {
+                            if let Some(favicon) = data["favicon"].as_str() {
+                                if let Some(ref webview) = tab_bar_for_ipc {
+                                    let script = format!(
+                                        "window.updateTabFavicon({}, {});",
+                                        tab_id_for_ipc,
+                                        serde_json::to_string(favicon).unwrap_or_else(|_| "\"\"".to_string())
+                                    );
+                                    let _ = webview.evaluate_script(&script);
+                                }
+                            }
+                        }
                         Some("update_url") => {
                             if let Some(url) = data["url"].as_str() {
                                 if let Ok(mut urls) = current_urls_for_ipc.lock() {
@@ -558,6 +681,18 @@ console.log('[INIT] Console override installed');
                                 _ => "[BROWSER]"
                             };
                             eprintln!("{} {}", prefix, message);
+                        }
+                        Some("audio_state_changed") => {
+                            if let Some(is_playing) = data["isPlaying"].as_bool() {
+                                if let Some(ref webview) = tab_bar_for_ipc {
+                                    let script = format!(
+                                        "if (window.updateTabAudioState) {{ window.updateTabAudioState({}, {}); }}",
+                                        tab_id_for_ipc,
+                                        is_playing
+                                    );
+                                    let _ = webview.evaluate_script(&script);
+                                }
+                            }
                         }
                         Some("load_settings") => {
                             debug_log!("=== load_settings IPC received from tab ===");
@@ -689,11 +824,19 @@ console.log('[INIT] Console override installed');
             }
             if let Some(current_tab) = self.tabs.get(&current_id) {
                 current_tab.hide();
+                // Notify the old tab it's now inactive
+                let _ = current_tab.webview.evaluate_script(
+                    "if (window.onTabInactive) { window.onTabInactive(); }"
+                );
             }
         }
 
         if let Some(new_tab) = self.tabs.get(&tab_id) {
             new_tab.show();
+            // Notify the new tab it's now active
+            let _ = new_tab.webview.evaluate_script(
+                "if (window.onTabActive) { window.onTabActive(); }"
+            );
             self.active_tab_id = Some(tab_id);
 
             if let Ok(mut active_id) = self.active_tab_id_shared.lock() {
@@ -761,8 +904,13 @@ console.log('[INIT] Console override installed');
     pub fn reload_active_tab(&self) {
         if let Some(tab_id) = self.active_tab_id {
             if let Some(tab) = self.tabs.get(&tab_id) {
-                let script = "window.location.reload();";
-                let _ = tab.webview.evaluate_script(script);
+                if tab.url == "calm://settings" {
+                    let settings_html = crate::ui::get_settings_html();
+                    let _ = tab.webview.load_html(&settings_html);
+                } else {
+                    let script = "window.location.reload();";
+                    let _ = tab.webview.evaluate_script(script);
+                }
             }
         }
     }
@@ -798,29 +946,49 @@ console.log('[INIT] Console override installed');
     pub fn open_devtools_for_tab(&mut self, tab_id: usize, window: &Window) {
         if let Some(tab) = self.tabs.get(&tab_id) {
             let window_size = window.inner_size();
+            let scale_factor = window.scale_factor();
+            let sidebar_width_physical = (self.tab_sidebar_width as f64 * scale_factor) as u32;
 
             if let Some(ref tab_bar) = self.tab_bar_webview {
                 let tab_bar_bounds = wry::Rect {
-                    position: LogicalPosition::new(0, 0).into(),
-                    size: LogicalSize::new(self.tab_sidebar_width, window_size.height).into(),
+                    position: PhysicalPosition::new(0, 0).into(),
+                    size: PhysicalSize::new(sidebar_width_physical, window_size.height).into(),
                 };
-                let _ = tab_bar.set_bounds(tab_bar_bounds);
                 let _ = tab_bar.set_visible(true);
+                let _ = tab_bar.set_bounds(tab_bar_bounds);
             }
 
-            tab.webview.open_devtools();
-
-            std::thread::sleep(std::time::Duration::from_millis(50));
-
-            let content_width = window_size.width.saturating_sub(self.tab_sidebar_width);
+            let content_width = window_size.width.saturating_sub(sidebar_width_physical);
             let tab_bounds = wry::Rect {
-                position: LogicalPosition::new(self.tab_sidebar_width as i32, 0).into(),
-                size: LogicalSize::new(content_width, window_size.height).into(),
+                position: PhysicalPosition::new(sidebar_width_physical as i32, 0).into(),
+                size: PhysicalSize::new(content_width, window_size.height).into(),
             };
             let _ = tab.webview.set_bounds(tab_bounds);
 
+            tab.webview.open_devtools();
+
+            std::thread::sleep(std::time::Duration::from_millis(300));
+
             if let Some(ref tab_bar) = self.tab_bar_webview {
+                let tab_bar_bounds = wry::Rect {
+                    position: PhysicalPosition::new(0, 0).into(),
+                    size: PhysicalSize::new(sidebar_width_physical, window_size.height).into(),
+                };
                 let _ = tab_bar.set_visible(true);
+                let _ = tab_bar.set_bounds(tab_bar_bounds);
+            }
+
+            let _ = tab.webview.set_bounds(wry::Rect {
+                position: PhysicalPosition::new(sidebar_width_physical as i32, 0).into(),
+                size: PhysicalSize::new(content_width, window_size.height).into(),
+            });
+
+            if let Some(ref download_overlay) = self.download_overlay {
+                let sidebar_x = window_size.width as i32 - (300.0 * scale_factor) as i32;
+                let _ = download_overlay.set_bounds(wry::Rect {
+                    position: PhysicalPosition::new(sidebar_x, 0).into(),
+                    size: PhysicalSize::new((300.0 * scale_factor) as u32, window_size.height).into(),
+                });
             }
         }
     }

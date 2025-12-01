@@ -1,5 +1,17 @@
 pub fn get_script() -> &'static str {
     r#"
+        function createIcon(pathData, size = 16) {
+            return `<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}" style="display: inline-block; vertical-align: middle;"><path d="${pathData}" fill="currentColor"/></svg>`;
+        }
+
+        const icons = {
+            folder: 'M4 4h8v2h10v14H2V4h2zm16 4H10V6H4v12h16V8z',
+            clipboard: 'M10 2h6v2h4v18H4V4h4V2h2zm6 4v2H8V6H6v14h12V6h-2zm-2 0V4h-4v2h4z',
+            trash: 'M16 2v4h6v2h-2v14H4V8H2V6h6V2h8zm-2 2h-4v2h4V4zm0 4H6v12h12V8h-4zm-5 2h2v8H9v-8zm6 0h-2v8h2v-8z',
+            close: 'M5 5h2v2H5V5zm4 4H7V7h2v2zm2 2H9V9h2v2zm2 0h-2v2H9v2H7v2H5v2h2v-2h2v-2h2v-2h2v2h2v2h2v2h2v-2h-2v-2h-2v-2h-2v-2zm2-2v2h-2V9h2zm2-2v2h-2V7h2zm0 0V5h2v2h-2z',
+            check: 'M18 6h2v2h-2V6zm-2 4V8h2v2h-2zm-2 2v-2h2v2h-2zm-2 2h2v-2h-2v2zm-2 2h2v-2h-2v2zm-2 0v2h2v-2H8zm-2-2h2v2H6v-2zm0 0H4v-2h2v2z'
+        };
+
         window.downloads = [];
         window.isVisible = false;
         window.contextMenu = null;
@@ -9,6 +21,10 @@ pub fn get_script() -> &'static str {
             const panel = document.getElementById('downloads-panel');
             if (visible) {
                 panel.style.transform = 'translateX(0)';
+                window.downloads.forEach(d => {
+                    d.seen = true;
+                });
+                updateDownloadBadge();
             } else {
                 panel.style.transform = 'translateX(100%)';
             }
@@ -37,6 +53,7 @@ pub fn get_script() -> &'static str {
                 downloadedBytes: 0,
                 completed: false,
                 failed: false,
+                seen: false,
                 startTime: Date.now()
             };
             window.downloads.push(download);
@@ -45,14 +62,41 @@ pub fn get_script() -> &'static str {
         };
 
         function updateDownloadBadge() {
-            const activeDownloads = window.downloads.filter(d => !d.completed && !d.failed).length;
+            const unseenDownloads = window.downloads.filter(d => (d.completed || d.failed) && !d.seen).length;
+            const inProgressDownloads = window.downloads.filter(d => !d.completed && !d.failed);
+            const hasInProgress = inProgressDownloads.length > 0;
 
             try {
-                if (window.parent && window.parent.updateDownloadCount) {
-                    window.parent.updateDownloadCount(activeDownloads);
+                if (window.ipc) {
+                    window.ipc.postMessage(JSON.stringify({
+                        action: 'update_download_count',
+                        count: unseenDownloads,
+                        inProgress: hasInProgress
+                    }));
+
+                    if (hasInProgress) {
+                        const latestDownload = inProgressDownloads[0];
+                        if (latestDownload.totalBytes > 0) {
+                            const percent = Math.round((latestDownload.downloadedBytes / latestDownload.totalBytes) * 100);
+                            window.ipc.postMessage(JSON.stringify({
+                                action: 'update_download_progress',
+                                percent: percent
+                            }));
+                        } else {
+                            window.ipc.postMessage(JSON.stringify({
+                                action: 'update_download_progress',
+                                percent: -1
+                            }));
+                        }
+                    } else {
+                        window.ipc.postMessage(JSON.stringify({
+                            action: 'update_download_progress',
+                            percent: -1
+                        }));
+                    }
                 }
             } catch(e) {
-                console.log('Could not update parent download count:', e);
+                console.log('Could not update download progress:', e);
             }
         }
 
@@ -103,6 +147,7 @@ pub fn get_script() -> &'static str {
                     downloadedBytes: entry.total_bytes,
                     completed: entry.completed,
                     failed: entry.failed,
+                    seen: true,
                     startTime: entry.timestamp * 1000,
                     completedTime: entry.completed ? entry.timestamp * 1000 : null,
                     failedTime: entry.failed ? entry.timestamp * 1000 : null
@@ -134,7 +179,7 @@ pub fn get_script() -> &'static str {
 
             if (download.completed && download.filePath) {
                 menuItems.push({
-                    label: '📁 Show in Finder',
+                    label: createIcon(icons.folder, 12) + ' Show in Finder',
                     action: () => {
                         window.ipc.postMessage(JSON.stringify({
                             action: 'reveal_in_finder',
@@ -145,7 +190,7 @@ pub fn get_script() -> &'static str {
                 });
 
                 menuItems.push({
-                    label: '📋 Copy Path',
+                    label: createIcon(icons.clipboard, 12) + ' Copy Path',
                     action: () => {
                         navigator.clipboard.writeText(download.filePath);
                         hideContextMenu();
@@ -154,7 +199,7 @@ pub fn get_script() -> &'static str {
             }
 
             menuItems.push({
-                label: '🗑️ Remove from List',
+                label: createIcon(icons.trash, 12) + ' Remove from List',
                 action: () => {
                     const index = window.downloads.findIndex(d => d.id === download.id);
                     if (index > -1) {
@@ -169,7 +214,7 @@ pub fn get_script() -> &'static str {
             menuItems.forEach((item, index) => {
                 const menuItem = document.createElement('div');
                 menuItem.className = 'context-menu-item';
-                menuItem.textContent = item.label;
+                menuItem.innerHTML = item.label;
                 menuItem.onclick = item.action;
                 menu.appendChild(menuItem);
 
@@ -235,7 +280,7 @@ pub fn get_script() -> &'static str {
             emptyEl.style.display = 'none';
 
             listEl.innerHTML = '';
-            window.downloads.forEach(download => {
+            window.downloads.slice().reverse().forEach(download => {
                 const itemEl = document.createElement('div');
                 let className = 'download-item';
                 if (download.completed) className += ' completed';
@@ -260,13 +305,13 @@ pub fn get_script() -> &'static str {
                 }
 
                 if (download.failed) {
-                    statusText = '<span>✗ failed</span>';
+                    statusText = '<span class="download-status">' + createIcon(icons.close, 10) + ' failed</span>';
                     timeText = download.failedTime ? formatTime(download.failedTime) : '';
                     progressBarHtml = `<div class="download-progress-bar">
                         <div class="download-progress-fill failed" style="width: 100%; animation: none;"></div>
                     </div>`;
                 } else if (download.completed) {
-                    statusText = '<span>✓ complete</span>';
+                    statusText = '<span class="download-status">' + createIcon(icons.check, 10) + ' complete</span>';
                     timeText = download.completedTime ? formatTime(download.completedTime) : '';
                     progressBarHtml = `<div class="download-progress-bar">
                         <div class="download-progress-fill completed" style="width: 100%; animation: none;"></div>
@@ -294,7 +339,7 @@ pub fn get_script() -> &'static str {
                 }
 
                 const folderIcon = download.completed && download.filePath
-                    ? `<div class="download-folder-icon" title="Show in Finder">📁</div>`
+                    ? `<div class="download-folder-icon" title="Show in Finder">${createIcon(icons.folder, 14)}</div>`
                     : '';
 
                 itemEl.innerHTML = `

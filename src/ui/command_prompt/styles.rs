@@ -34,7 +34,7 @@ pub fn get_command_prompt_styles() -> String {
             background: rgba(0, 0, 0, 0.7);
             cursor: pointer;
             z-index: 9998;
-            animation: backdropFadeIn 0.15s linear;
+            animation: backdropFadeIn 0.1s linear;
         }}
 
         .command-prompt-container {{
@@ -42,25 +42,24 @@ pub fn get_command_prompt_styles() -> String {
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: 500px;
+            width: 600px;
             max-width: 90%;
-            background: #000000;
+            background: #101010;
             border: 2px solid #ffffff;
-            padding: 16px;
+            padding: 0;
             z-index: 9999;
-            animation: promptSlideIn 0.2s ease-out;
+            animation: promptSlideIn 0.15s ease-out;
         }}
 
         .command-prompt-input {{
             width: 100%;
-            padding: 12px;
+            padding: 16px;
             font-family: 'gohu', monospace;
-            font-size: 14px;
+            font-size: 16px;
             color: #ffffff;
-            background: #1a1a1a;
-            border: 1px solid #ffffff;
+            background: #101010;
+            border: none;
             outline: none;
-            margin-bottom: 8px;
         }}
 
         .command-prompt-input::placeholder {{
@@ -68,14 +67,11 @@ pub fn get_command_prompt_styles() -> String {
         }}
 
         .command-prompt-input:focus {{
-            border-color: #ffffff;
-            background: #000000;
+            background: #101010;
         }}
 
         .command-prompt-hint {{
-            font-size: 10px;
-            color: #666666;
-            text-align: center;
+            display: none;
         }}
 
         @keyframes backdropFadeIn {{

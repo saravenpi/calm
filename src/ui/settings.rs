@@ -17,7 +17,7 @@ pub fn get_settings_html() -> String {
 
             body {{{{
                 {}
-                background: #0a0a0a;
+                background: #101010;
                 color: #e8e8e8;
                 padding: 180px 40px 60px 40px;
                 line-height: 1.6;
@@ -34,7 +34,6 @@ pub fn get_settings_html() -> String {
                 font-size: 32px;
                 margin-top: 20px;
                 margin-bottom: 12px;
-                font-weight: 700;
                 letter-spacing: -0.02em;
                 color: #ffffff;
                 font-family: 'gohu', monospace;
@@ -44,7 +43,6 @@ pub fn get_settings_html() -> String {
                 color: #888888;
                 font-size: 14px;
                 margin-bottom: 40px;
-                font-weight: 400;
                 font-family: 'gohu', monospace;
             }}
 
@@ -63,7 +61,6 @@ pub fn get_settings_html() -> String {
             .setting-section h2 {{
                 font-size: 16px;
                 margin-bottom: 20px;
-                font-weight: 600;
                 color: #ffffff;
                 letter-spacing: -0.01em;
                 font-family: 'gohu', monospace;
@@ -94,7 +91,6 @@ pub fn get_settings_html() -> String {
             .setting-label {{
                 font-size: 14px;
                 margin-bottom: 4px;
-                font-weight: 500;
                 color: #ffffff;
                 font-family: 'gohu', monospace;
             }}
@@ -269,7 +265,6 @@ pub fn get_settings_html() -> String {
                 padding: 12px 24px;
                 font-size: 14px;
                 font-family: 'gohu', monospace;
-                font-weight: 600;
                 cursor: pointer;
                 transition: all 0.2s ease;
             }}
@@ -290,15 +285,23 @@ pub fn get_settings_html() -> String {
                 margin-left: 16px;
                 color: #4ade80;
                 font-size: 14px;
+                font-family: 'gohu', monospace;
                 opacity: 0;
-                transition: opacity 0.3s ease;
                 padding: 12px 20px;
                 background: rgba(74, 222, 128, 0.1);
                 border: 1px solid rgba(74, 222, 128, 0.3);
+                transform: translateX(-20px);
+                transition: opacity 0.3s ease, transform 0.3s ease;
             }}
 
             .save-indicator.show {{
                 opacity: 1;
+                transform: translateX(0);
+            }}
+
+            .save-indicator.hide {{
+                opacity: 0;
+                transform: translateX(-20px);
             }}
 
             .save-section {{{{
@@ -337,10 +340,12 @@ pub fn get_settings_html() -> String {
 
                 window.ipc.postMessage(message);
 
-                const indicator = document.querySelector('.save-indicator');
+                const indicator = document.getElementById('save-indicator');
+                indicator.classList.remove('hide');
                 indicator.classList.add('show');
                 setTimeout(() => {
                     indicator.classList.remove('show');
+                    indicator.classList.add('hide');
                 }, 2000);
             }
 
@@ -386,6 +391,79 @@ pub fn get_settings_html() -> String {
 
             window.addEventListener('load', loadSettings);
 
+            let isTabActive = true;
+            let faviconTransitionTimeout = null;
+
+            function interpolateColor(from, to, steps, currentStep) {
+                const fromVal = parseInt(from, 16);
+                const toVal = parseInt(to, 16);
+                const step = (toVal - fromVal) / steps;
+                const val = Math.round(fromVal + (step * currentStep));
+                return val.toString(16).padStart(2, '0');
+            }
+
+            function setFaviconColor(color) {
+                const link = document.querySelector('link[rel="icon"]');
+                if (link) {
+                    link.remove();
+                }
+                const newLink = document.createElement('link');
+                newLink.rel = 'icon';
+                newLink.type = 'image/svg+xml';
+                newLink.href = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23${color}'%3E%3Cpath d='M17 4h2v10h-2V4zm0 12h-2v2h2v2h2v-2h2v-2h-4zm-4-6h-2v10h2V10zm-8 2H3v2h2v6h2v-6h2v-2H5zm8-8h-2v2H9v2h6V6h-2V4zM5 4h2v6H5V4z'/%3E%3C/svg%3E`;
+                document.head.appendChild(newLink);
+
+                // Notify tab bar to update display
+                if (window.ipc) {
+                    window.ipc.postMessage(JSON.stringify({
+                        action: 'update_favicon',
+                        favicon: newLink.href
+                    }));
+                }
+            }
+
+            function updateFavicon(active) {
+                if (faviconTransitionTimeout) {
+                    clearTimeout(faviconTransitionTimeout);
+                }
+
+                isTabActive = active;
+                const fromColor = active ? 'ffffff' : '000000';
+                const toColor = active ? '000000' : 'ffffff';
+                const steps = 4;
+                let currentStep = 0;
+
+                function animateStep() {
+                    if (currentStep <= steps) {
+                        const r = interpolateColor(fromColor.substr(0, 2), toColor.substr(0, 2), steps, currentStep);
+                        const g = interpolateColor(fromColor.substr(2, 2), toColor.substr(2, 2), steps, currentStep);
+                        const b = interpolateColor(fromColor.substr(4, 2), toColor.substr(4, 2), steps, currentStep);
+                        const color = r + g + b;
+
+                        setFaviconColor(color);
+                        currentStep++;
+
+                        if (currentStep <= steps) {
+                            faviconTransitionTimeout = setTimeout(animateStep, 30);
+                        }
+                    }
+                }
+
+                animateStep();
+            }
+
+            window.onTabActive = function() {
+                updateFavicon(true);
+            };
+
+            window.onTabInactive = function() {
+                updateFavicon(false);
+            };
+
+            window.addEventListener('load', function() {
+                updateFavicon(true);
+            });
+
             document.addEventListener('keydown', function(e) {
                 if ((e.metaKey || e.ctrlKey) && e.key === 'r') {
                     e.preventDefault();
@@ -409,11 +487,17 @@ pub fn get_settings_html() -> String {
 <head>
     <meta charset="UTF-8">
     <title>Settings - Calm Browser</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ffffff'%3E%3Cpath d='M17 4h2v10h-2V4zm0 12h-2v2h2v2h2v-2h2v-2h-4zm-4-6h-2v10h2V10zm-8 2H3v2h2v6h2v-6h2v-2H5zm8-8h-2v2H9v2h6V6h-2V4zM5 4h2v6H5V4z'/%3E%3C/svg%3E">
     {}
 </head>
 <body>
     <div class="settings-container">
-        <h1>Settings</h1>
+        <h1 style="display: flex; align-items: center;">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges" style="margin-right: 12px;">
+                <path d="M17 4h2v10h-2V4zm0 12h-2v2h2v2h2v-2h2v-2h-4zm-4-6h-2v10h2V10zm-8 2H3v2h2v6h2v-6h2v-2H5zm8-8h-2v2H9v2h6V6h-2V4zM5 4h2v6H5V4z"/>
+            </svg>
+            Settings
+        </h1>
         <p class="subtitle">Customize your Calm Browser experience</p>
 
         <div class="setting-section">
@@ -492,8 +576,13 @@ pub fn get_settings_html() -> String {
         </div>
 
         <div class="save-section">
-            <button onclick="saveSettings()">Save Settings</button>
-            <span class="save-indicator">✓ Saved</span>
+            <button onclick="saveSettings()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges" style="display: inline-block; vertical-align: middle; margin-right: 8px;">
+                    <path d="M4 2h14v2H4v16h2v-6h12v6h2V6h2v16H2V2h2zm4 18h8v-4H8v4zM20 6h-2V4h2v2zM6 6h9v4H6V6z"/>
+                </svg>
+                Save Settings
+            </button>
+            <span class="save-indicator" id="save-indicator">Saved</span>
         </div>
     </div>
     {}
