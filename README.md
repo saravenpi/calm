@@ -45,7 +45,13 @@ calm privacy focused browser
 - Native Rust performance with low resource usage
 - Privacy protections enabled by default
 - Multi-tab browsing with visual tab bar
+- Split view support for side-by-side browsing
+- Vim-style keyboard navigation (optional)
+- Command prompt for quick navigation
 - Download manager sidebar
+- Audio playing indicator on tabs
+- Customizable keyboard shortcuts
+- Settings page with live configuration
 - Fully configurable via ~/.calm.yml
 - Custom protocol support for local files (calmfile://)
 
@@ -86,22 +92,50 @@ See [PRIVACY.md](PRIVACY.md) for details.
 
 ### Multi-Tab Browsing
 
-- Visual tab bar at the top with tab titles and close buttons
+- Visual sidebar with tab titles and close buttons
 - Active tab highlighting
-- Audio indicator for tabs playing media
+- Audio indicator for tabs playing media (🔊)
 - Smooth tab animations (opening/closing)
 - Keyboard shortcuts for navigation
 - URL bar with auto-focus on new tabs
 - Back/forward navigation buttons
-- No tab limit - browse freely
+- Maximum 20 tabs for performance
+- Tab favicons with automatic detection
+- Loading state indicators
+
+### Split View Mode
+
+Browse two tabs side-by-side:
+
+- **Cmd+Shift+S**: Toggle split view for current tab
+- Creates a vertical split with current tab and next available tab
+- Both tabs fully functional and interactive
+- Independent scrolling and navigation
+- Perfect for research, comparison, or reference work
+- Press **Cmd+Shift+S** again to exit split view
 
 ### Download Management
 
-- Toggle sidebar with Cmd+J
-- Shows all downloads with progress
-- Download status tracking
+- Toggle sidebar with **Cmd+J**
+- Shows all downloads with real-time progress
+- Download status tracking (in progress, completed, failed)
+- Automatic file extension detection using content sniffing
+- Download history persistence
 - Clean, organized interface
 - Smooth slide-in/slide-out animations
+- Click to open file or reveal in Finder
+
+### Settings Page
+
+Access via `calm://settings`:
+
+- Configure default URL and search engine
+- Toggle vim mode on/off
+- Enable/disable UI sounds
+- Customize all keyboard shortcuts
+- Toggle privacy features (tracking blocking, fingerprinting protection)
+- Live preview of changes
+- Settings sync immediately to `~/.calm.yml`
 
 ### Design
 
@@ -175,6 +209,7 @@ Calm can be configured via `~/.calm.yml`. The file is automatically created on f
 ```yaml
 search_engine: https://start.duckduckgo.com/?q={}
 default_url: https://start.duckduckgo.com
+user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
 
 privacy:
   hardware_spoofing: true
@@ -199,6 +234,7 @@ privacy:
 **General Options:**
 - `search_engine`: Search engine URL pattern (use `{}` as placeholder for search query)
 - `default_url`: URL or file path to open when Calm starts without arguments
+- `user_agent`: Browser identification string sent to websites (default: Safari on macOS for Google sign-in compatibility)
 
 **Privacy Options (all enabled by default):**
 - `hardware_spoofing`: Spoofs CPU cores, RAM, platform details
@@ -218,6 +254,41 @@ privacy:
 - `webgl_fingerprint_protection`: WebGL information spoofing
 - `audio_fingerprint_protection`: Audio data randomization
 - `font_enumeration_restriction`: Limits to 9 standard fonts
+
+**UI Options:**
+```yaml
+ui:
+  vim_mode: true        # Enable vim-style navigation
+  debug: false          # Enable debug logging
+  sounds: true          # Enable UI sound effects
+  shortcuts:            # Customize all keyboard shortcuts
+    new_tab: "Cmd+T"
+    close_tab: "Cmd+W"
+    reload: "Cmd+R"
+    focus_url: "Cmd+L"
+    toggle_downloads: "Cmd+J"
+    focus_sidebar: "Cmd+E"
+    find: "Cmd+F"
+    new_window: "Cmd+N"
+    toggle_split_view: "Cmd+Shift+S"
+```
+
+**Performance Options:**
+```yaml
+performance:
+  lazy_tab_loading: true             # Load tabs on demand
+  tab_suspension: true               # Suspend inactive tabs
+  suspension_timeout_minutes: 15     # Time before suspending tab
+  session_restore: true              # Restore tabs on startup
+  session_save_interval_seconds: 30  # How often to save session
+  max_memory_per_tab_mb: 512        # Memory limit per tab
+```
+
+**Redirect Options:**
+```yaml
+redirect_youtube_to_invidious: false  # Redirect YouTube to Invidious
+invidious_instance: yewtu.be          # Invidious instance to use
+```
 
 **Examples:**
 
@@ -250,18 +321,60 @@ calm rust programming    # Searches using configured search engine
 
 ### Keyboard Shortcuts
 
-All shortcuts work reliably with dual-layer event handling (native + JavaScript):
+All shortcuts work reliably with native macOS menu integration:
 
-- **Cmd+T** (Ctrl+T): Open new tab
-- **Cmd+W** (Ctrl+W): Close current tab (or quit if last tab)
-- **Cmd+Q** (Ctrl+Q): Quit application immediately
-- **Cmd+R** (Ctrl+R): Reload current tab
-- **Cmd+L** (Ctrl+L): Focus and select URL bar
-- **Cmd+J** (Ctrl+J): Toggle downloads sidebar
+**File Menu:**
+- **Cmd+N**: Open new window
+- **Cmd+T**: Open new tab
+- **Cmd+W**: Close current tab
+- **Cmd+Q**: Quit application
+
+**Edit Menu:**
+- **Cmd+C**: Copy
+- **Cmd+X**: Cut
+- **Cmd+V**: Paste
+- **Cmd+A**: Select all
+
+**View Menu:**
+- **Cmd+R**: Reload current page
+- **Cmd+J**: Toggle downloads sidebar
+- **Cmd+Shift+S**: Toggle split view mode
+
+**Navigate Menu:**
+- **Cmd+L**: Focus URL bar
+- **Cmd+E**: Focus sidebar
+- **Cmd+F**: Find in page
+
+**Other:**
 - **Enter**: Navigate to URL (when in URL bar)
-- **Esc**: Blur URL bar (exit focus)
+- **Esc**: Blur URL bar or cancel action
 
-Shortcuts use physical key codes for consistent cross-platform behavior.
+All shortcuts are fully customizable in `~/.calm.yml` under the `ui.shortcuts` section.
+
+### Vim Mode Navigation
+
+When vim mode is enabled (default), you can use vim-style keys to navigate:
+
+**Scrolling:**
+- **j**: Scroll down
+- **k**: Scroll up
+- **h**: Scroll left
+- **l**: Scroll right
+- **gg**: Scroll to top (press 'g' twice quickly)
+- **G**: Scroll to bottom (Shift+g)
+
+**Link Hints:**
+- **f**: Show link hints for clicking links
+- **F**: Show link hints for opening links in new tab (Shift+f)
+
+**Search:**
+- **/**: Start in-page search
+
+Vim mode can be disabled in settings or via `~/.calm.yml`:
+```yaml
+ui:
+  vim_mode: false
+```
 
 ### Tab Management
 

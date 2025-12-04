@@ -249,6 +249,8 @@ pub struct Config {
     pub search_engine: String,
     #[serde(default = "default_start_url")]
     pub default_url: String,
+    #[serde(default = "default_user_agent")]
+    pub user_agent: String,
     #[serde(default)]
     pub privacy: PrivacySettings,
     #[serde(default)]
@@ -271,6 +273,11 @@ fn default_start_url() -> String {
     "https://start.duckduckgo.com".to_string()
 }
 
+/// Default user agent string (macOS Safari 26.0 for Google sign-in compatibility).
+fn default_user_agent() -> String {
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15".to_string()
+}
+
 /// Default Invidious instance for YouTube redirects.
 fn default_invidious_instance() -> String {
     "yewtu.be".to_string()
@@ -281,6 +288,7 @@ impl Default for Config {
         Config {
             search_engine: default_search_engine(),
             default_url: default_start_url(),
+            user_agent: default_user_agent(),
             privacy: PrivacySettings::default(),
             ui: UiSettings::default(),
             performance: PerformanceSettings::default(),

@@ -75,7 +75,6 @@ fn main() -> wry::Result<()> {
 
     let config = Config::load();
 
-    // Initialize debug logging based on config
     debug::set_debug_enabled(config.ui.debug);
     debug_log!("Debug mode enabled");
     debug_log!("Config loaded: vim_mode={}, debug={}", config.ui.vim_mode, config.ui.debug);
@@ -668,9 +667,6 @@ fn main() -> wry::Result<()> {
                         modifiers.alt_key(),
                         modifiers.shift_key()
                     );
-
-                    // Cmd+T and Cmd+W are handled by GlobalHotKey (not KeyboardInput)
-                    // because KeyboardInput doesn't fire when webview has focus
 
                     if key_event.logical_key == tao::keyboard::Key::Enter {
                         debug_log!("Enter key - focusing selected tab");

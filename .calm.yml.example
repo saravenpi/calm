@@ -7,6 +7,11 @@ search_engine: https://start.duckduckgo.com/?q={}
 # Default URL or file to open when Calm starts without arguments
 default_url: https://start.duckduckgo.com
 
+# Browser User Agent
+# Identifies the browser to websites. Uses Safari on macOS for compatibility.
+# This must match the platform spoofing in privacy settings for consistency.
+user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
+
 # Privacy Settings
 # All privacy features are enabled by default
 # Set any to false to disable that specific protection

@@ -165,10 +165,12 @@ impl TabManager {
             builder.with_url(&cleaned_url)
         };
 
+        let user_agent = self.config.borrow().user_agent.clone();
+
         let webview = builder
             .with_bounds(bounds)
             .with_visible(false)
-            .with_user_agent(privacy::get_privacy_user_agent())
+            .with_user_agent(&user_agent)
             .with_devtools(true)
             .with_clipboard(true)
             .with_on_page_load_handler(move |event, _url| {

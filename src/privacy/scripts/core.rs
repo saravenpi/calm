@@ -10,11 +10,11 @@ pub fn get_privacy_script(settings: &PrivacySettings) -> String {
         Object.defineProperty(navigator, 'webdriver', { ...config, get: () => false });
         Object.defineProperty(navigator, 'plugins', { ...config, get: () => [] });
         Object.defineProperty(navigator, 'languages', { ...config, get: () => ['en-US', 'en'] });
-        Object.defineProperty(navigator, 'hardwareConcurrency', { ...config, get: () => 4 });
+        Object.defineProperty(navigator, 'hardwareConcurrency', { ...config, get: () => 8 });
         Object.defineProperty(navigator, 'deviceMemory', { ...config, get: () => 8 });
-        Object.defineProperty(navigator, 'platform', { ...config, get: () => 'Win32' });
+        Object.defineProperty(navigator, 'platform', { ...config, get: () => 'MacIntel' });
         Object.defineProperty(navigator, 'maxTouchPoints', { ...config, get: () => 0 });
-        Object.defineProperty(navigator, 'vendor', { ...config, get: () => 'Google Inc.' });
+        Object.defineProperty(navigator, 'vendor', { ...config, get: () => 'Apple Computer, Inc.' });
         "#,
         );
     }
