@@ -13,7 +13,12 @@ pub fn install_update(update_file: PathBuf) -> Result<(), Box<dyn Error>> {
     std::fs::create_dir_all(&extract_dir)?;
 
     let status = Command::new("tar")
-        .args(["-xzf", update_file.to_str().unwrap(), "-C", extract_dir.to_str().unwrap()])
+        .args([
+            "-xzf",
+            update_file.to_str().unwrap(),
+            "-C",
+            extract_dir.to_str().unwrap(),
+        ])
         .status()?;
 
     if !status.success() {
@@ -59,7 +64,12 @@ pub fn install_update(update_file: PathBuf) -> Result<(), Box<dyn Error>> {
     std::fs::create_dir_all(&extract_dir)?;
 
     let status = Command::new("tar")
-        .args(["-xzf", update_file.to_str().unwrap(), "-C", extract_dir.to_str().unwrap()])
+        .args([
+            "-xzf",
+            update_file.to_str().unwrap(),
+            "-C",
+            extract_dir.to_str().unwrap(),
+        ])
         .status()?;
 
     if !status.success() {

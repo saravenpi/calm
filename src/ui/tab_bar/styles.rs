@@ -228,16 +228,24 @@ pub fn get_tab_bar_styles() -> String {
 
         .tab-audio-indicator {{
             display: none;
-            font-size: 11px;
+            width: 12px;
+            height: 12px;
             flex-shrink: 0;
-            animation: audioWave 1s ease-in-out infinite;
+            margin-left: 4px;
+            color: #ffffff;
+            opacity: 0.6;
+            animation: audioPulse 1s ease-in-out infinite;
         }}
 
         .tab-audio-indicator.playing {{
             display: block;
         }}
 
-        @keyframes audioWave {{
+        .tab.active .tab-audio-indicator {{
+            color: #000000;
+        }}
+
+        @keyframes audioPulse {{
             0%, 100% {{
                 opacity: 0.6;
                 transform: scale(1);

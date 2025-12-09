@@ -1,7 +1,7 @@
 # Calm Browser
 
 <p align="center">
-  <img src="calm_logo.png" alt="Calm Browser Logo" width="200">
+  <img src="assets/calm_logo.png" alt="Calm Browser Logo" width="200">
 </p>
 
 <p align="center">

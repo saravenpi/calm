@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use urlencoding;
 
 /// Privacy-related configuration settings for the browser.
 /// Controls various fingerprinting protection and tracking prevention features.
@@ -41,6 +40,8 @@ pub struct PrivacySettings {
     pub audio_fingerprint_protection: bool,
     #[serde(default = "default_true")]
     pub font_enumeration_restriction: bool,
+    #[serde(default = "default_true")]
+    pub adblock_enabled: bool,
 }
 
 /// Default value function for boolean fields (returns true).
@@ -122,11 +123,16 @@ impl KeyboardShortcuts {
         self.close_tab = normalize_shortcut(&self.close_tab, &default_shortcut_close_tab());
         self.reload = normalize_shortcut(&self.reload, &default_shortcut_reload());
         self.focus_url = normalize_shortcut(&self.focus_url, &default_shortcut_focus_url());
-        self.toggle_downloads = normalize_shortcut(&self.toggle_downloads, &default_shortcut_toggle_downloads());
-        self.focus_sidebar = normalize_shortcut(&self.focus_sidebar, &default_shortcut_focus_sidebar());
+        self.toggle_downloads =
+            normalize_shortcut(&self.toggle_downloads, &default_shortcut_toggle_downloads());
+        self.focus_sidebar =
+            normalize_shortcut(&self.focus_sidebar, &default_shortcut_focus_sidebar());
         self.find = normalize_shortcut(&self.find, &default_shortcut_find());
         self.new_window = normalize_shortcut(&self.new_window, &default_shortcut_new_window());
-        self.toggle_split_view = normalize_shortcut(&self.toggle_split_view, &default_shortcut_toggle_split_view());
+        self.toggle_split_view = normalize_shortcut(
+            &self.toggle_split_view,
+            &default_shortcut_toggle_split_view(),
+        );
     }
 }
 
@@ -237,6 +243,7 @@ impl Default for PrivacySettings {
             webgl_fingerprint_protection: true,
             audio_fingerprint_protection: true,
             font_enumeration_restriction: true,
+            adblock_enabled: true,
         }
     }
 }

@@ -1,19 +1,26 @@
 pub fn get_script() -> &'static str {
     r#"
         (function() {
+            console.log('[Context Menu] Script loading...');
+            
             function initContextMenu() {
-                if (!document.getElementById('calm-font-face') && document.head) {
-                    const style = document.createElement('style');
-                    style.id = 'calm-font-face';
-                    style.textContent = `
-                        @font-face {
-                            font-family: 'gohu';
-                            src: url('data:application/font-woff2;charset=utf-8;base64,d09GMgABAAAAABEYAA4AAAAAJKAAABDEAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGhYbHhyBbAZgAIEICghWCYM8EQwKgdRgg7hzC4NAAAE2AiQDhx4EIAWDAAeFPQyBZxu8IqOQHkO2HySh4MbHmL/M3v+TQLAbdqUBAhsOACi1kcDKiixZqgMYVqyqKju0e3//b7Pb1SIRqC5SN6ErCDmT0DSReCdh0kgkn2Dz/P//n3m/+cXsO7PvzO07c+/M3DszJJKS5kkk0kmkk0gkkdwk0kmke+/eJvfuPQe9e5vce/emL7lJokTy3ntPIin33ntP7r33nvz/f5tdYKuqKqmqomor87+ft3e21N7ZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9s2afbNm36zZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9s2afbNm36zZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9s2afbNm36zZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9v0HAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') format('woff2');
-                            font-weight: normal;
-                            font-style: normal;
-                        }
-                    `;
-                    document.head.appendChild(style);
+                console.log('[Context Menu] initContextMenu() called');
+                try {
+                    if (!document.getElementById('calm-font-face') && document.head) {
+                        const style = document.createElement('style');
+                        style.id = 'calm-font-face';
+                        style.textContent = `
+                            @font-face {
+                                font-family: 'gohu';
+                                src: url('data:application/font-woff2;charset=utf-8;base64,d09GMgABAAAAABEYAA4AAAAAJKAAABDEAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGhYbHhyBbAZgAIEICghWCYM8EQwKgdRgg7hzC4NAAAE2AiQDhx4EIAWDAAeFPQyBZxu8IqOQHkO2HySh4MbHmL/M3v+TQLAbdqUBAhsOACi1kcDKiixZqgMYVqyqKju0e3//b7Pb1SIRqC5SN6ErCDmT0DSReCdh0kgkn2Dz/P//n3m/+cXsO7PvzO07c+/M3DszJJKS5kkk0kmkk0gkkdwk0kmke+/eJvfuPQe9e5vce/emL7lJokTy3ntPIin33ntP7r33nvz/f5tdYKuqKqmqomor87+ft3e21N7ZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9s2afbNm36zZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9s2afbNm36zZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9s2afbNm36zZN2v2zZp9s2bfrNk3a/bNmn2zZt+s2Tdr9v0HAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') format('woff2');
+                                font-weight: normal;
+                                font-style: normal;
+                            }
+                        `;
+                        document.head.appendChild(style);
+                    }
+                } catch (e) {
+                    console.error('[Context Menu] Failed to inject styles:', e);
                 }
 
             let contextMenu = null;
@@ -39,7 +46,7 @@ pub fn get_script() -> &'static str {
                     color: #ffffff;
                     font-family: 'gohu', monospace;
                     font-size: 11px;
-                    z-index: 999999;
+                    z-index: 2147483647;
                     min-width: 180px;
                     display: none;
                     padding: 4px;
@@ -292,8 +299,8 @@ pub fn get_script() -> &'static str {
                 }, icons.inspect));
 
                 if (items.length > 0) {
-                    console.log('[Context Menu] Showing menu with', items.length, 'items at', e.pageX, e.pageY);
-                    showContextMenu(e.pageX, e.pageY, items);
+                    console.log('[Context Menu] Showing menu with', items.length, 'items at', e.clientX, e.clientY);
+                    showContextMenu(e.clientX, e.clientY, items);
                 }
             }, true);
 

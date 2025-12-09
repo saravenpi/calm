@@ -55,10 +55,8 @@ impl SingleInstance {
                         let mut buffer = String::new();
                         if stream.read_to_string(&mut buffer).is_ok() {
                             for line in buffer.lines() {
-                                if !line.is_empty() {
-                                    if tx.send(line.to_string()).is_err() {
-                                        return;
-                                    }
+                                if !line.is_empty() && tx.send(line.to_string()).is_err() {
+                                    return;
                                 }
                             }
                         }

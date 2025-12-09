@@ -64,9 +64,9 @@ This document tracks features and improvements needed to make Calm a fully usabl
 ### Downloads
 - [x] Download tracking (basic implementation exists)
 - [ ] Download pause/resume
-- [ ] Download history
+- [x] Download history
 - [ ] Download location selection per file
-- [ ] Open containing folder
+- [x] Open containing folder
 - [ ] Scan with antivirus integration
 
 ### Multi-Window Support

@@ -1,12 +1,15 @@
+pub mod adblock;
 pub mod context_menu;
 pub mod core;
 pub mod download_intercept;
 pub mod fingerprint;
+pub mod link_handler;
 pub mod title_tracker;
 pub mod tracking;
 
 use crate::config::PrivacySettings;
 
+pub use adblock::get_adblock_script;
 pub use context_menu::get_script as get_context_menu_script;
 pub use core::{get_dark_mode_preference, get_privacy_script};
 pub use download_intercept::get_script as get_download_interceptor;
@@ -14,6 +17,7 @@ pub use fingerprint::{
     get_audio_fingerprint_protection, get_canvas_fingerprint_protection,
     get_font_fingerprint_protection, get_webgl_fingerprint_protection,
 };
+pub use link_handler::get_link_handler_script;
 pub use title_tracker::get_title_tracker_script;
 pub use tracking::get_tracking_blocker;
 
@@ -35,6 +39,10 @@ pub fn get_all_privacy_scripts_with_config(settings: &PrivacySettings) -> String
     let mut scripts = Vec::new();
 
     scripts.push(get_privacy_script(settings).to_string());
+
+    if settings.adblock_enabled {
+        scripts.push(get_adblock_script().to_string());
+    }
 
     if settings.tracking_domain_blocking {
         scripts.push(get_tracking_blocker().to_string());
@@ -60,6 +68,7 @@ pub fn get_all_privacy_scripts_with_config(settings: &PrivacySettings) -> String
     scripts.push(get_title_tracker_script().to_string());
     scripts.push(get_download_interceptor().to_string());
     scripts.push(get_context_menu_script().to_string());
+    scripts.push(get_link_handler_script().to_string());
 
     scripts.join("\n")
 }

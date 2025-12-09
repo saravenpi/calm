@@ -2,6 +2,7 @@ mod config;
 mod debug;
 mod downloads;
 mod errors;
+mod history;
 mod ipc;
 #[allow(dead_code)]
 mod performance;
@@ -103,11 +104,17 @@ fn main() -> wry::Result<()> {
     debug_log!("  close_tab: {}", config.ui.shortcuts.close_tab);
     debug_log!("  reload: {}", config.ui.shortcuts.reload);
     debug_log!("  focus_url: {}", config.ui.shortcuts.focus_url);
-    debug_log!("  toggle_downloads: {}", config.ui.shortcuts.toggle_downloads);
+    debug_log!(
+        "  toggle_downloads: {}",
+        config.ui.shortcuts.toggle_downloads
+    );
     debug_log!("  focus_sidebar: {}", config.ui.shortcuts.focus_sidebar);
     debug_log!("  find: {}", config.ui.shortcuts.find);
     debug_log!("  new_window: {}", config.ui.shortcuts.new_window);
-    debug_log!("  toggle_split_view: {}", config.ui.shortcuts.toggle_split_view);
+    debug_log!(
+        "  toggle_split_view: {}",
+        config.ui.shortcuts.toggle_split_view
+    );
 
     if !single_instance::SingleInstance::is_single() {
         let url_to_send = if args.is_empty() {
@@ -117,9 +124,8 @@ fn main() -> wry::Result<()> {
             let url = if first_arg.starts_with("http://")
                 || first_arg.starts_with("https://")
                 || first_arg.starts_with("file://")
+                || first_arg.contains("://")
             {
-                first_arg.clone()
-            } else if first_arg.contains("://") {
                 first_arg.clone()
             } else if first_arg.contains('.') && !first_arg.contains(' ') {
                 format!("https://{}", first_arg)
@@ -272,9 +278,8 @@ fn main() -> wry::Result<()> {
         let url = if first_arg.starts_with("http://")
             || first_arg.starts_with("https://")
             || first_arg.starts_with("file://")
+            || first_arg.contains("://")
         {
-            first_arg.clone()
-        } else if first_arg.contains("://") {
             first_arg.clone()
         } else if first_arg.contains('.') && !first_arg.contains(' ') {
             format!("https://{}", first_arg)
@@ -617,12 +622,31 @@ fn handle_window_resize(components: &BrowserWindowComponents) {
     };
     let _ = components.tab_bar_webview.set_bounds(tab_bar_bounds);
 
-    let sidebar_x = window_size.width as i32 - (DOWNLOAD_SIDEBAR_WIDTH as f64 * scale_factor) as i32;
+    let sidebar_x =
+        window_size.width as i32 - (DOWNLOAD_SIDEBAR_WIDTH as f64 * scale_factor) as i32;
     let sidebar_bounds = wry::Rect {
         position: tao::dpi::PhysicalPosition::new(sidebar_x, 0).into(),
-        size: tao::dpi::PhysicalSize::new(DOWNLOAD_SIDEBAR_WIDTH as f64 * scale_factor, window_size.height as f64).into(),
+        size: tao::dpi::PhysicalSize::new(
+            DOWNLOAD_SIDEBAR_WIDTH as f64 * scale_factor,
+            window_size.height as f64,
+        )
+        .into(),
     };
     let _ = components.download_overlay.set_bounds(sidebar_bounds);
+
+    if *components.command_prompt_visible.borrow() {
+        if let Some(ref overlay) = *components.command_prompt_overlay.borrow() {
+            let command_prompt_bounds = wry::Rect {
+                position: tao::dpi::PhysicalPosition::new(0, 0).into(),
+                size: tao::dpi::PhysicalSize::new(
+                    window_size.width as f64,
+                    window_size.height as f64,
+                )
+                .into(),
+            };
+            let _ = overlay.set_bounds(command_prompt_bounds);
+        }
+    }
 
     let is_visible = *components.sidebar_visible.borrow();
     if is_visible {

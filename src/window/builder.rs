@@ -85,7 +85,7 @@ pub fn create_browser_window<T>(
 
     let tab_bar_webview = Rc::new(
         WebViewBuilder::new()
-            .with_html(&ui::get_complete_tab_bar_html(config.borrow().ui.vim_mode, config.borrow().ui.sounds))
+            .with_html(ui::get_complete_tab_bar_html(config.borrow().ui.vim_mode, config.borrow().ui.sounds))
             .with_transparent(true)
             .with_bounds(Rect {
                 position: tao::dpi::LogicalPosition::new(0, 0).into(),
@@ -408,7 +408,7 @@ pub fn create_browser_window<T>(
                                         let is_likely_url = url_str.contains('.')
                                             && !url_str.contains(' ')
                                             && (url_str.starts_with("localhost")
-                                                || url_str.contains("..") == false
+                                                || !url_str.contains("..")
                                                     && url_str.split('.').count() >= 2);
 
                                         if is_likely_url {
@@ -563,7 +563,7 @@ pub fn create_browser_window<T>(
                                                 let tab_bar_for_prompt = Rc::clone(&tab_bar_webview_ref);
 
                                                 match wry::WebViewBuilder::new()
-                                                    .with_html(&ui::get_command_prompt_html())
+                                                    .with_html(ui::get_command_prompt_html())
                                                     .with_bounds(wry::Rect {
                                                         position: tao::dpi::LogicalPosition::new(0, 0).into(),
                                                         size: tao::dpi::LogicalSize::new(window_size.width, window_size.height).into(),
@@ -588,7 +588,7 @@ pub fn create_browser_window<T>(
                                                                             let is_likely_url = url_str.contains('.')
                                                                                 && !url_str.contains(' ')
                                                                                 && (url_str.starts_with("localhost")
-                                                                                    || url_str.contains("..") == false
+                                                                                    || !url_str.contains("..")
                                                                                         && url_str.split('.').count() >= 2);
 
                                                                             if is_likely_url {
@@ -624,6 +624,12 @@ pub fn create_browser_window<T>(
                                                     .build_as_child(window.as_ref())
                                                 {
                                                     Ok(webview) => {
+                                                        let history = tab_manager.borrow().get_history();
+                                                        let history_entries = history.borrow().get_recent(100);
+                                                        let history_json = serde_json::to_string(&history_entries).unwrap_or_else(|_| "[]".to_string());
+                                                        let script = format!("if (window.setHistory) {{ window.setHistory({}); }}", history_json);
+                                                        let _ = webview.evaluate_script(&script);
+
                                                         *command_prompt_overlay_ref.borrow_mut() = Some(webview);
                                                         *command_prompt_visible.borrow_mut() = true;
                                                     }
@@ -689,7 +695,7 @@ pub fn create_browser_window<T>(
     let tab_bar_for_downloads = Rc::clone(&tab_bar_webview);
     let download_overlay = Rc::new(
         WebViewBuilder::new()
-            .with_html(&ui::get_download_overlay_html())
+            .with_html(ui::get_download_overlay_html())
             .with_bounds(Rect {
                 position: tao::dpi::LogicalPosition::new(
                     (window_size.width as i32) - DOWNLOAD_SIDEBAR_WIDTH,
@@ -771,38 +777,36 @@ pub fn create_browser_window<T>(
             manager.create_tab(&window, &initial_url)
         };
 
-        match tab_result {
-            Ok(tab_id) => {
-                manager.switch_to_tab(tab_id);
-                let display_url = if use_welcome_html {
-                    "calm://welcome".to_string()
-                } else {
-                    initial_url.clone()
-                };
-                let escaped_url =
-                    serde_json::to_string(&display_url).unwrap_or_else(|_| "\"\"".to_string());
-                let url_bar_display = if use_welcome_html {
-                    "''".to_string()
-                } else {
-                    escaped_url.clone()
-                };
-                let script = format!(
-                    "window.addTab({}, {}); window.setActiveTab({}); window.updateUrlBar({});",
-                    tab_id, escaped_url, tab_id, url_bar_display
-                );
-                let _ = tab_bar_webview.evaluate_script(&script);
+        if let Ok(tab_id) = tab_result {
+            manager.switch_to_tab(tab_id);
+            let display_url = if use_welcome_html {
+                "calm://welcome".to_string()
+            } else {
+                initial_url.clone()
+            };
+            let escaped_url =
+                serde_json::to_string(&display_url).unwrap_or_else(|_| "\"\"".to_string());
+            let url_bar_display = if use_welcome_html {
+                "''".to_string()
+            } else {
+                escaped_url.clone()
+            };
+            let script = format!(
+                "window.addTab({}, {}); window.setActiveTab({}); window.updateUrlBar({});",
+                tab_id, escaped_url, tab_id, url_bar_display
+            );
+            let _ = tab_bar_webview.evaluate_script(&script);
 
-                let ui_state = manager.get_split_ui_state();
-                let orientation_str = ui_state.active_group_orientation.as_deref().unwrap_or("vertical");
-                let state_script = format!(
-                    "if (window.updateSplitUIState) {{ window.updateSplitUIState({}, {}, '{}'); }}",
-                    ui_state.active_tab_in_split,
-                    ui_state.can_create_split,
-                    orientation_str
-                );
-                let _ = tab_bar_webview.evaluate_script(&state_script);
-            }
-            Err(_) => {}
+            let ui_state = manager.get_split_ui_state();
+            let orientation_str = ui_state
+                .active_group_orientation
+                .as_deref()
+                .unwrap_or("vertical");
+            let state_script = format!(
+                "if (window.updateSplitUIState) {{ window.updateSplitUIState({}, {}, '{}'); }}",
+                ui_state.active_tab_in_split, ui_state.can_create_split, orientation_str
+            );
+            let _ = tab_bar_webview.evaluate_script(&state_script);
         }
     }
 

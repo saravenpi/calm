@@ -10,6 +10,8 @@ const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const GITHUB_REPO: &str = "saravenpi/calm";
 const UPDATE_CHECK_INTERVAL_HOURS: u64 = 24;
 
+type DownloadInfo = (String, Option<String>, Option<String>, Option<u64>);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateInfo {
     pub version: String,
@@ -191,7 +193,7 @@ impl Updater {
 
     fn get_download_info_for_platform(
         assets: &[GitHubAsset],
-    ) -> Result<(String, Option<String>, Option<String>, Option<u64>), Box<dyn Error>> {
+    ) -> Result<DownloadInfo, Box<dyn Error>> {
         #[cfg(target_os = "macos")]
         let platform_suffix = if cfg!(target_arch = "aarch64") {
             "macOS-aarch64.tar.gz"
@@ -275,7 +277,11 @@ impl Updater {
         Ok(temp_file)
     }
 
-    pub fn install_update(&mut self, update_file: PathBuf, version: String) -> Result<(), Box<dyn Error>> {
+    pub fn install_update(
+        &mut self,
+        update_file: PathBuf,
+        version: String,
+    ) -> Result<(), Box<dyn Error>> {
         match update_installer::install_update(update_file) {
             Ok(_) => {
                 self.state.mark_update_success(version);

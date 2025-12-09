@@ -94,8 +94,10 @@ impl PerformanceMetrics {
         if let Some(avg_mem) = self.avg_memory_usage() {
             eprintln!("Avg memory: {} MB", avg_mem);
         }
-        eprintln!("Tabs: {} active, {} suspended, {} total",
-                 self.active_tabs, self.suspended_tabs, self.total_tabs);
+        eprintln!(
+            "Tabs: {} active, {} suspended, {} total",
+            self.active_tabs, self.suspended_tabs, self.total_tabs
+        );
         eprintln!("==========================");
     }
 }

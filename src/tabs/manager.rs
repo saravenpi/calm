@@ -3,6 +3,7 @@ use super::tab::Tab;
 use crate::config::Config;
 use crate::debug_log;
 use crate::downloads::DownloadManager;
+use crate::history::History;
 use crate::privacy;
 use crate::url_cleaner;
 use crate::vimium_hints;
@@ -15,6 +16,11 @@ use tao::{
     window::Window,
 };
 use wry::{Rect, WebView, WebViewBuilder};
+
+struct ThreadSafeWebView(std::rc::Rc<WebView>);
+unsafe impl Send for ThreadSafeWebView {}
+unsafe impl Sync for ThreadSafeWebView {}
+
 
 /// Maximum number of tabs that can be open simultaneously.
 const MAX_TABS: usize = 20;
@@ -32,6 +38,7 @@ pub struct TabManager {
     split_view: SplitViewManager,
     current_urls: Arc<Mutex<HashMap<usize, String>>>,
     active_tab_id_shared: Arc<Mutex<Option<usize>>>,
+    history: std::rc::Rc<std::cell::RefCell<History>>,
 }
 
 /// Returns the path to the user's Downloads directory.
@@ -47,7 +54,7 @@ fn add_extension_if_needed(path: &PathBuf) -> PathBuf {
             let sample = &bytes[..sample_size];
             if let Some(kind) = infer::get(sample) {
                 let new_path = path.with_extension(kind.extension());
-                if let Ok(_) = fs::rename(path, &new_path) {
+                if fs::rename(path, &new_path).is_ok() {
                     return new_path;
                 }
             }
@@ -72,6 +79,7 @@ impl TabManager {
             split_view: SplitViewManager::new(),
             current_urls: Arc::new(Mutex::new(HashMap::new())),
             active_tab_id_shared: Arc::new(Mutex::new(None)),
+            history: std::rc::Rc::new(std::cell::RefCell::new(History::load())),
         }
     }
 
@@ -83,6 +91,10 @@ impl TabManager {
     /// Sets the reference to the download overlay webview.
     pub fn set_download_overlay(&mut self, webview: std::rc::Rc<WebView>) {
         self.download_overlay = Some(webview);
+    }
+
+    pub fn get_history(&self) -> std::rc::Rc<std::cell::RefCell<History>> {
+        std::rc::Rc::clone(&self.history)
     }
 
     /// Creates a new tab with the specified URL.
@@ -156,6 +168,11 @@ impl TabManager {
         let tab_id_for_page_load = tab_id;
         let active_tab_id_for_ipc = Arc::clone(&self.active_tab_id_shared);
         let config_for_ipc = std::rc::Rc::clone(&self.config);
+        let history_for_ipc = std::rc::Rc::clone(&self.history);
+
+        // Proxy to allow accessing the webview from within its own IPC handler
+        let webview_proxy_slot = std::rc::Rc::new(std::cell::RefCell::new(None::<std::rc::Rc<WebView>>));
+        let webview_proxy_for_ipc = webview_proxy_slot.clone();
 
         let mut builder = WebViewBuilder::new();
 
@@ -613,10 +630,50 @@ console.log('[INIT] Console override installed');
                     }
                 }
             })
+            .with_new_window_req_handler({
+                let tab_bar_for_req = self.tab_bar_webview.clone().map(ThreadSafeWebView);
+                move |url, _features| {
+                    if let Some(wrapper) = &tab_bar_for_req {
+                        let webview_rc = &wrapper.0;
+                        let escaped_url = serde_json::to_string(&url).unwrap_or_else(|_| "\"\"".to_string());
+                        let script = format!(
+                            "window.ipcMessageToWindow = {{ action: 'open_url_new_tab', url: {} }};",
+                            escaped_url
+                        );
+                        let _ = webview_rc.evaluate_script(&script);
+                    }
+                    wry::NewWindowResponse::Deny
+                }
+            })
             .with_ipc_handler(move |request| {
                 let body = request.body();
                 if let Ok(data) = serde_json::from_str::<serde_json::Value>(body) {
                     match data["action"].as_str() {
+                        Some("open_url_new_tab") => {
+                            if let Some(url) = data["url"].as_str() {
+                                if let Some(ref webview) = tab_bar_for_ipc {
+                                    let escaped_url = serde_json::to_string(url).unwrap_or_else(|_| "\"\"".to_string());
+                                    let script = format!(
+                                        "window.ipcMessageToWindow = {{ action: 'open_url_new_tab', url: {} }};",
+                                        escaped_url
+                                    );
+                                    let _ = webview.evaluate_script(&script);
+                                }
+                            }
+                        }
+                        Some("search_history") => {
+                            if let Some(query) = data["query"].as_str() {
+                                if let Some(ref webview) = tab_bar_for_ipc {
+                                    let results = history_for_ipc.borrow().search(query, 20);
+                                    let results_json = serde_json::to_string(&results).unwrap_or_else(|_| "[]".to_string());
+                                    let script = format!(
+                                        "if (window.showHistorySuggestions) {{ window.showHistorySuggestions({}); }}",
+                                        results_json
+                                    );
+                                    let _ = webview.evaluate_script(&script);
+                                }
+                            }
+                        }
                         Some("update_title") => {
                             if let Some(title) = data["title"].as_str() {
                                 if let Some(ref webview) = tab_bar_for_ipc {
@@ -662,6 +719,11 @@ console.log('[INIT] Console override installed');
                                 }
                             }
                         }
+                        Some("add_to_history") => {
+                            if let (Some(url), Some(title)) = (data["url"].as_str(), data["title"].as_str()) {
+                                history_for_ipc.borrow_mut().add_entry(url.to_string(), title.to_string());
+                            }
+                        }
                         Some("update_navigation_state") => {
                             if let Some(ref webview) = tab_bar_for_ipc {
                                 let can_go_back = data["canGoBack"].as_bool().unwrap_or(false);
@@ -696,6 +758,11 @@ console.log('[INIT] Console override installed');
                                 }
                             }
                         }
+                        Some("inspect_element") => {
+                            if let Some(ref webview) = *webview_proxy_for_ipc.borrow() {
+                                webview.open_devtools();
+                            }
+                        }
                         Some("load_settings") => {
                             debug_log!("=== load_settings IPC received from tab ===");
                             if let Some(ref webview) = tab_bar_for_ipc {
@@ -703,7 +770,10 @@ console.log('[INIT] Console override installed');
                                 let settings_obj = serde_json::json!({
                                     "defaultUrl": cfg.default_url,
                                     "searchEngine": cfg.search_engine,
+                                    "youtubeRedirect": cfg.redirect_youtube_to_invidious,
+                                    "invidiousInstance": cfg.invidious_instance,
                                     "vimMode": cfg.ui.vim_mode,
+                                    "uiSounds": cfg.ui.sounds,
                                     "blockTrackers": cfg.privacy.tracking_domain_blocking,
                                     "blockFingerprinting": cfg.privacy.canvas_fingerprint_protection,
                                     "blockCookies": true,
@@ -729,6 +799,10 @@ console.log('[INIT] Console override installed');
                                 drop(cfg);
                             }
                         }
+                        Some("clear_history") => {
+                            debug_log!("=== clear_history IPC received ===");
+                            history_for_ipc.borrow_mut().clear();
+                        }
                         Some("save_settings") => {
                             debug_log!("=== save_settings IPC received from tab ===");
                             if let Some(settings) = data["settings"].as_object() {
@@ -742,6 +816,14 @@ console.log('[INIT] Console override installed');
                                 if let Some(search_engine) = settings.get("searchEngine").and_then(|v| v.as_str()) {
                                     debug_log!("Setting search_engine to: {}", search_engine);
                                     cfg.search_engine = search_engine.to_string();
+                                }
+                                if let Some(youtube_redirect) = settings.get("youtubeRedirect").and_then(|v| v.as_bool()) {
+                                    debug_log!("Setting youtube_redirect to: {}", youtube_redirect);
+                                    cfg.redirect_youtube_to_invidious = youtube_redirect;
+                                }
+                                if let Some(invidious_instance) = settings.get("invidiousInstance").and_then(|v| v.as_str()) {
+                                    debug_log!("Setting invidious_instance to: {}", invidious_instance);
+                                    cfg.invidious_instance = invidious_instance.to_string();
                                 }
                                 if let Some(vim_mode) = settings.get("vimMode").and_then(|v| v.as_bool()) {
                                     debug_log!("Setting vim_mode to: {}", vim_mode);
@@ -765,31 +847,49 @@ console.log('[INIT] Console override installed');
                                 if let Some(shortcuts) = settings.get("shortcuts").and_then(|v| v.as_object()) {
                                     debug_log!("Saving keyboard shortcuts");
                                     if let Some(new_tab) = shortcuts.get("new_tab").and_then(|v| v.as_str()) {
-                                        cfg.ui.shortcuts.new_tab = new_tab.to_string();
+                                        if !new_tab.trim().is_empty() {
+                                            cfg.ui.shortcuts.new_tab = new_tab.to_string();
+                                        }
                                     }
                                     if let Some(close_tab) = shortcuts.get("close_tab").and_then(|v| v.as_str()) {
-                                        cfg.ui.shortcuts.close_tab = close_tab.to_string();
+                                        if !close_tab.trim().is_empty() {
+                                            cfg.ui.shortcuts.close_tab = close_tab.to_string();
+                                        }
                                     }
                                     if let Some(reload) = shortcuts.get("reload").and_then(|v| v.as_str()) {
-                                        cfg.ui.shortcuts.reload = reload.to_string();
+                                        if !reload.trim().is_empty() {
+                                            cfg.ui.shortcuts.reload = reload.to_string();
+                                        }
                                     }
                                     if let Some(focus_url) = shortcuts.get("focus_url").and_then(|v| v.as_str()) {
-                                        cfg.ui.shortcuts.focus_url = focus_url.to_string();
+                                        if !focus_url.trim().is_empty() {
+                                            cfg.ui.shortcuts.focus_url = focus_url.to_string();
+                                        }
                                     }
                                     if let Some(toggle_downloads) = shortcuts.get("toggle_downloads").and_then(|v| v.as_str()) {
-                                        cfg.ui.shortcuts.toggle_downloads = toggle_downloads.to_string();
+                                        if !toggle_downloads.trim().is_empty() {
+                                            cfg.ui.shortcuts.toggle_downloads = toggle_downloads.to_string();
+                                        }
                                     }
                                     if let Some(focus_sidebar) = shortcuts.get("focus_sidebar").and_then(|v| v.as_str()) {
-                                        cfg.ui.shortcuts.focus_sidebar = focus_sidebar.to_string();
+                                        if !focus_sidebar.trim().is_empty() {
+                                            cfg.ui.shortcuts.focus_sidebar = focus_sidebar.to_string();
+                                        }
                                     }
                                     if let Some(find) = shortcuts.get("find").and_then(|v| v.as_str()) {
-                                        cfg.ui.shortcuts.find = find.to_string();
+                                        if !find.trim().is_empty() {
+                                            cfg.ui.shortcuts.find = find.to_string();
+                                        }
                                     }
                                     if let Some(new_window) = shortcuts.get("new_window").and_then(|v| v.as_str()) {
-                                        cfg.ui.shortcuts.new_window = new_window.to_string();
+                                        if !new_window.trim().is_empty() {
+                                            cfg.ui.shortcuts.new_window = new_window.to_string();
+                                        }
                                     }
                                     if let Some(toggle_split_view) = shortcuts.get("toggle_split_view").and_then(|v| v.as_str()) {
-                                        cfg.ui.shortcuts.toggle_split_view = toggle_split_view.to_string();
+                                        if !toggle_split_view.trim().is_empty() {
+                                            cfg.ui.shortcuts.toggle_split_view = toggle_split_view.to_string();
+                                        }
                                     }
                                 }
 
@@ -811,16 +911,6 @@ console.log('[INIT] Console override installed');
                                 }
                             } else {
                                 debug_log!("ERROR: No settings object in save_settings message from tab");
-                            }
-                        }
-                        Some("inspect_element") => {
-                            debug_log!("Forwarding inspect_element request for tab {} to window", tab_id_for_ipc);
-                            if let Some(ref webview) = tab_bar_for_ipc {
-                                let script = format!(
-                                    "window.ipcMessageToWindow = {{ action: 'inspect_element_tab', tabId: {} }};",
-                                    tab_id_for_ipc
-                                );
-                                let _ = webview.evaluate_script(&script);
                             }
                         }
                         Some("keyboard_shortcut") => {
@@ -864,6 +954,9 @@ console.log('[INIT] Console override installed');
 
         debug_log!("Webview built successfully for tab {}", tab_id);
 
+        let webview = std::rc::Rc::new(webview);
+        *webview_proxy_slot.borrow_mut() = Some(webview.clone());
+
         let mut tab = Tab::new(tab_id, cleaned_url.clone(), webview);
         tab.mark_accessed();
         self.tabs.insert(tab_id, tab);
@@ -905,12 +998,15 @@ console.log('[INIT] Console override installed');
                 if group.primary_tab_id == *t_id || group.secondary_tab_id == *t_id {
                     tab.show();
                     if let Some(webview) = tab.webview() {
-                        let _ = webview.evaluate_script("if (window.onTabActive) { window.onTabActive(); }");
+                        let _ = webview
+                            .evaluate_script("if (window.onTabActive) { window.onTabActive(); }");
                     }
                 } else {
                     tab.hide();
                     if let Some(webview) = tab.webview() {
-                        let _ = webview.evaluate_script("if (window.onTabInactive) { window.onTabInactive(); }");
+                        let _ = webview.evaluate_script(
+                            "if (window.onTabInactive) { window.onTabInactive(); }",
+                        );
                     }
                 }
             }
@@ -919,12 +1015,15 @@ console.log('[INIT] Console override installed');
                 if *t_id == tab_id {
                     tab.show();
                     if let Some(webview) = tab.webview() {
-                        let _ = webview.evaluate_script("if (window.onTabActive) { window.onTabActive(); }");
+                        let _ = webview
+                            .evaluate_script("if (window.onTabActive) { window.onTabActive(); }");
                     }
                 } else {
                     tab.hide();
                     if let Some(webview) = tab.webview() {
-                        let _ = webview.evaluate_script("if (window.onTabInactive) { window.onTabInactive(); }");
+                        let _ = webview.evaluate_script(
+                            "if (window.onTabInactive) { window.onTabInactive(); }",
+                        );
                     }
                 }
             }
@@ -943,7 +1042,10 @@ console.log('[INIT] Console override installed');
                 String::new()
             };
             let escaped_url = serde_json::to_string(&url).unwrap_or_else(|_| "\"\"".to_string());
-            let script = format!("window.setActiveTab({}); window.updateUrlBar({});", tab_id, escaped_url);
+            let script = format!(
+                "window.setActiveTab({}); window.updateUrlBar({});",
+                tab_id, escaped_url
+            );
             let _ = webview.evaluate_script(&script);
         }
     }
@@ -958,7 +1060,10 @@ console.log('[INIT] Console override installed');
             }
 
             if let Some(_group_id) = self.split_view.remove_tab_from_group(tab_id) {
-                debug_log!("Tab {} was in a split group, group has been dissolved", tab_id);
+                debug_log!(
+                    "Tab {} was in a split group, group has been dissolved",
+                    tab_id
+                );
             }
 
             if self.active_tab_id == Some(tab_id) {
@@ -1064,15 +1169,9 @@ console.log('[INIT] Console override installed');
 
                 webview.open_devtools();
 
-                std::thread::sleep(std::time::Duration::from_millis(300));
-
+                // Ensure bounds are maintained without blocking
                 if let Some(ref tab_bar) = self.tab_bar_webview {
-                    let tab_bar_bounds = wry::Rect {
-                        position: PhysicalPosition::new(0, 0).into(),
-                        size: PhysicalSize::new(sidebar_width_physical, window_size.height).into(),
-                    };
                     let _ = tab_bar.set_visible(true);
-                    let _ = tab_bar.set_bounds(tab_bar_bounds);
                 }
 
                 let _ = webview.set_bounds(wry::Rect {
@@ -1084,7 +1183,8 @@ console.log('[INIT] Console override installed');
                     let sidebar_x = window_size.width as i32 - (300.0 * scale_factor) as i32;
                     let _ = download_overlay.set_bounds(wry::Rect {
                         position: PhysicalPosition::new(sidebar_x, 0).into(),
-                        size: PhysicalSize::new((300.0 * scale_factor) as u32, window_size.height).into(),
+                        size: PhysicalSize::new((300.0 * scale_factor) as u32, window_size.height)
+                            .into(),
                     });
                 }
             }
@@ -1205,10 +1305,7 @@ console.log('[INIT] Console override installed');
                 return false;
             }
 
-            let secondary_tab_id = non_grouped
-                .iter()
-                .find(|&&id| id != active_tab_id)
-                .copied();
+            let secondary_tab_id = non_grouped.iter().find(|&&id| id != active_tab_id).copied();
 
             if let Some(secondary) = secondary_tab_id {
                 let _group_id = self.split_view.create_group(
@@ -1227,7 +1324,8 @@ console.log('[INIT] Console override installed');
     /// Returns the split UI state for the current active tab.
     pub fn get_split_ui_state(&self) -> super::split_view::SplitUIState {
         let all_tab_ids: Vec<usize> = self.tabs.keys().copied().collect();
-        self.split_view.calculate_ui_state(self.active_tab_id, &all_tab_ids)
+        self.split_view
+            .calculate_ui_state(self.active_tab_id, &all_tab_ids)
     }
 
     /// Returns JSON representation of all split groups.
@@ -1278,7 +1376,11 @@ console.log('[INIT] Console override installed');
 
     /// Updates the layout and bounds of split view panes.
     /// Only shows the active tab or its split group, hiding all other tabs.
-    pub fn update_split_view_layout(&mut self, window: &Window, download_sidebar_width: Option<u32>) {
+    pub fn update_split_view_layout(
+        &mut self,
+        window: &Window,
+        download_sidebar_width: Option<u32>,
+    ) {
         let Some(active_tab_id) = self.active_tab_id else {
             return;
         };

@@ -109,7 +109,7 @@ pub fn get_tab_bar_script() -> &'static str {
             const audioIndicator = document.createElement('span');
             audioIndicator.className = 'tab-audio-indicator';
             audioIndicator.id = `audio-indicator-${tabId}`;
-            audioIndicator.textContent = '🎧';
+            audioIndicator.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges"><path d="M11 2h2v4h-2V2zm2 12h-2v6h2v-6zm-6 0h2v6H7v-6zm8 0h2v6h-2v-6zm-4 3h2v3h-2v-3zm0-10h2v4h-2V7zM7 7h2v4H7V7zm8 0h2v4h-2V7zm-4 3h2v4h-2v-4z"/></svg>';
 
             const closeBtn = document.createElement('span');
             closeBtn.className = 'tab-close';
@@ -628,7 +628,7 @@ pub fn get_tab_bar_script() -> &'static str {
             const audioIndicator = document.createElement('span');
             audioIndicator.className = 'tab-audio-indicator';
             audioIndicator.id = `audio-indicator-${tab.id}`;
-            audioIndicator.textContent = '🎧';
+            audioIndicator.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges"><path d="M11 2h2v4h-2V2zm2 12h-2v6h2v-6zm-6 0h2v6H7v-6zm8 0h2v6h-2v-6zm-4 3h2v3h-2v-3zm0-10h2v4h-2V7zM7 7h2v4H7V7zm8 0h2v4h-2V7zm-4 3h2v4h-2v-4z"/></svg>';
 
             if (window.tabAudioState[tab.id]) {
                 audioIndicator.classList.add('playing');

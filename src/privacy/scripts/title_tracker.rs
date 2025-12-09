@@ -35,6 +35,14 @@ pub fn get_title_tracker_script() -> &'static str {
             function updateTitleAndUrl() {
                 updateTitle();
                 updateUrl();
+
+                if (window.ipc && lastTitle && lastUrl) {
+                    window.ipc.postMessage(JSON.stringify({
+                        action: 'add_to_history',
+                        url: lastUrl,
+                        title: lastTitle
+                    }));
+                }
             }
 
             function updateNavigationState() {

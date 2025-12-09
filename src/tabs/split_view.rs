@@ -232,7 +232,11 @@ impl SplitViewManager {
         }
     }
 
-    pub fn calculate_ui_state(&self, active_tab_id: Option<usize>, all_tab_ids: &[usize]) -> SplitUIState {
+    pub fn calculate_ui_state(
+        &self,
+        active_tab_id: Option<usize>,
+        all_tab_ids: &[usize],
+    ) -> SplitUIState {
         let (active_tab_in_split, active_group_orientation) = if let Some(tab_id) = active_tab_id {
             if let Some(group) = self.get_group_for_tab(tab_id) {
                 (true, Some(group.orientation.as_str().to_string()))
@@ -254,7 +258,9 @@ impl SplitViewManager {
     }
 
     pub fn get_split_groups_json(&self) -> String {
-        let groups_data: Vec<serde_json::Value> = self.groups.values()
+        let groups_data: Vec<serde_json::Value> = self
+            .groups
+            .values()
             .map(|group| {
                 serde_json::json!({
                     "primary": group.primary_tab_id,

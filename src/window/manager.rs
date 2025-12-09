@@ -110,7 +110,7 @@ impl WindowManager {
 
         let tab_bar_webview = Rc::new(
             WebViewBuilder::new()
-                .with_html(&ui::get_complete_tab_bar_html(
+                .with_html(ui::get_complete_tab_bar_html(
                     self.config.borrow().ui.vim_mode,
                     self.config.borrow().ui.sounds,
                 ))
@@ -127,7 +127,7 @@ impl WindowManager {
         let tab_bar_for_downloads = Rc::clone(&tab_bar_webview);
         let download_overlay = Rc::new(
             WebViewBuilder::new()
-                .with_html(&ui::get_download_overlay_html())
+                .with_html(ui::get_download_overlay_html())
                 .with_bounds(Rect {
                     position: LogicalPosition::new(
                         (window_size.width as i32) - DOWNLOAD_SIDEBAR_WIDTH,
@@ -289,7 +289,7 @@ impl WindowManager {
     pub fn save_session(&self) -> Result<(), String> {
         let mut window_states = HashMap::new();
 
-        for (_window_id, browser_window) in &self.windows {
+        for browser_window in self.windows.values() {
             let position = {
                 let pos = browser_window
                     .window

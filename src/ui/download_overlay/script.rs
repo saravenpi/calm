@@ -107,7 +107,7 @@ pub fn get_script() -> &'static str {
                 if (totalBytes > 0) {
                     download.totalBytes = totalBytes;
                 }
-                renderDownloads();
+                updateDownloadItem(download);
             }
         };
 
@@ -121,7 +121,7 @@ pub fn get_script() -> &'static str {
                 download.downloadedBytes = download.totalBytes;
                 download.completedTime = Date.now();
                 updateDownloadBadge();
-                renderDownloads();
+                updateDownloadItem(download);
             }
         };
 
@@ -131,7 +131,7 @@ pub fn get_script() -> &'static str {
                 download.failed = true;
                 download.failedTime = Date.now();
                 updateDownloadBadge();
-                renderDownloads();
+                updateDownloadItem(download);
             }
         };
 
@@ -205,7 +205,9 @@ pub fn get_script() -> &'static str {
                     if (index > -1) {
                         window.downloads.splice(index, 1);
                         updateDownloadBadge();
-                        renderDownloads();
+                        const itemEl = document.querySelector(`[data-download-id="${download.id}"]`);
+                        if (itemEl) itemEl.remove();
+                        if (window.downloads.length === 0) renderDownloads();
                     }
                     hideContextMenu();
                 }
@@ -268,16 +270,124 @@ pub fn get_script() -> &'static str {
             });
         }
 
+        function getDownloadHtml(download) {
+            let progressBarHtml = '';
+            let statusText = '';
+            let percentText = '';
+            let timeText = '';
+
+            function formatTime(timestamp) {
+                const now = Date.now();
+                const diff = now - timestamp;
+                const seconds = Math.floor(diff / 1000);
+                if (seconds < 60) return 'just now';
+                const minutes = Math.floor(seconds / 60);
+                if (minutes < 60) return minutes + 'm ago';
+                const hours = Math.floor(minutes / 60);
+                return hours + 'h ago';
+            }
+
+            if (download.failed) {
+                statusText = '<span class="download-status">' + createIcon(icons.close, 10) + ' failed</span>';
+                timeText = download.failedTime ? formatTime(download.failedTime) : '';
+                progressBarHtml = `<div class="download-progress-bar">
+                    <div class="download-progress-fill failed" style="width: 100%; animation: none;"></div>
+                </div>`;
+            } else if (download.completed) {
+                statusText = '<span class="download-status">' + createIcon(icons.check, 10) + ' complete</span>';
+                timeText = download.completedTime ? formatTime(download.completedTime) : '';
+                progressBarHtml = `<div class="download-progress-bar">
+                    <div class="download-progress-fill completed" style="width: 100%; animation: none;"></div>
+                </div>`;
+            } else {
+                const percent = download.totalBytes > 0
+                    ? Math.round((download.downloadedBytes / download.totalBytes) * 100)
+                    : 0;
+                const downloadedMB = formatBytes(download.downloadedBytes);
+                const totalMB = download.totalBytes > 0 ? formatBytes(download.totalBytes) : '?';
+
+                if (download.totalBytes > 0 && download.downloadedBytes > 0) {
+                    statusText = `<span><span class="download-spinner"></span>${percent}%</span>`;
+                    percentText = `<span>${downloadedMB} / ${totalMB}</span>`;
+                    progressBarHtml = `<div class="download-progress-bar">
+                        <div class="download-progress-fill" style="width: ${percent}%;"></div>
+                    </div>`;
+                } else {
+                    statusText = '<span><span class="download-spinner"></span>downloading</span>';
+                    timeText = '';
+                    progressBarHtml = `<div class="download-progress-bar">
+                        <div class="download-progress-fill indeterminate"></div>
+                    </div>`;
+                }
+            }
+
+            const folderIcon = download.completed && download.filePath
+                ? `<div class="download-folder-icon" title="Show in Finder">${createIcon(icons.folder, 14)}</div>`
+                : '';
+
+            return `
+                <div class="download-header">
+                    <div class="download-name">${download.filename}</div>
+                    ${folderIcon}
+                </div>
+                ${progressBarHtml}
+                <div class="download-info">
+                    ${statusText}
+                    ${percentText ? `<span class="download-size">${percentText}</span>` : ''}
+                    ${timeText ? `<span class="download-time">${timeText}</span>` : ''}
+                </div>
+            `;
+        }
+
+        function bindDownloadEvents(itemEl, download) {
+            itemEl.addEventListener('contextmenu', (e) => showContextMenu(e, download));
+
+            if (download.completed && download.filePath) {
+                const folderIconEl = itemEl.querySelector('.download-folder-icon');
+                if (folderIconEl) {
+                    folderIconEl.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        window.ipc.postMessage(JSON.stringify({
+                            action: 'reveal_in_finder',
+                            filePath: download.filePath
+                        }));
+                    });
+                }
+            }
+        }
+
+        function updateDownloadItem(download) {
+            const itemEl = document.querySelector(`[data-download-id="${download.id}"]`);
+            if (itemEl) {
+                let className = 'download-item';
+                if (download.completed) className += ' completed';
+                if (download.failed) className += ' failed';
+                itemEl.className = className;
+                itemEl.innerHTML = getDownloadHtml(download);
+                bindDownloadEvents(itemEl, download);
+            } else {
+                renderDownloads();
+            }
+        }
+
         function renderDownloads() {
             const listEl = document.getElementById('downloads-list');
             const emptyEl = document.getElementById('downloads-empty');
 
             if (window.downloads.length === 0) {
                 emptyEl.style.display = 'block';
+                listEl.innerHTML = '';
                 return;
             }
 
             emptyEl.style.display = 'none';
+
+            // Only clear and rebuild if we need to sync completely or initial load
+            // But strict "renderDownloads" usually implies a full rebuild.
+            // For partial updates we use updateDownloadItem.
+            // Check if we need to append new items or full rebuild.
+            // Here we do a full rebuild for simplicity when called directly,
+            // but updateDownloadProgress calls updateDownloadItem.
 
             listEl.innerHTML = '';
             window.downloads.slice().reverse().forEach(download => {
@@ -287,89 +397,8 @@ pub fn get_script() -> &'static str {
                 if (download.failed) className += ' failed';
                 itemEl.className = className;
                 itemEl.setAttribute('data-download-id', download.id);
-
-                let progressBarHtml = '';
-                let statusText = '';
-                let percentText = '';
-                let timeText = '';
-
-                function formatTime(timestamp) {
-                    const now = Date.now();
-                    const diff = now - timestamp;
-                    const seconds = Math.floor(diff / 1000);
-                    if (seconds < 60) return 'just now';
-                    const minutes = Math.floor(seconds / 60);
-                    if (minutes < 60) return minutes + 'm ago';
-                    const hours = Math.floor(minutes / 60);
-                    return hours + 'h ago';
-                }
-
-                if (download.failed) {
-                    statusText = '<span class="download-status">' + createIcon(icons.close, 10) + ' failed</span>';
-                    timeText = download.failedTime ? formatTime(download.failedTime) : '';
-                    progressBarHtml = `<div class="download-progress-bar">
-                        <div class="download-progress-fill failed" style="width: 100%; animation: none;"></div>
-                    </div>`;
-                } else if (download.completed) {
-                    statusText = '<span class="download-status">' + createIcon(icons.check, 10) + ' complete</span>';
-                    timeText = download.completedTime ? formatTime(download.completedTime) : '';
-                    progressBarHtml = `<div class="download-progress-bar">
-                        <div class="download-progress-fill completed" style="width: 100%; animation: none;"></div>
-                    </div>`;
-                } else {
-                    const percent = download.totalBytes > 0
-                        ? Math.round((download.downloadedBytes / download.totalBytes) * 100)
-                        : 0;
-                    const downloadedMB = formatBytes(download.downloadedBytes);
-                    const totalMB = download.totalBytes > 0 ? formatBytes(download.totalBytes) : '?';
-
-                    if (download.totalBytes > 0 && download.downloadedBytes > 0) {
-                        statusText = `<span><span class="download-spinner"></span>${percent}%</span>`;
-                        percentText = `<span>${downloadedMB} / ${totalMB}</span>`;
-                        progressBarHtml = `<div class="download-progress-bar">
-                            <div class="download-progress-fill" style="width: ${percent}%;"></div>
-                        </div>`;
-                    } else {
-                        statusText = '<span><span class="download-spinner"></span>downloading</span>';
-                        timeText = '';
-                        progressBarHtml = `<div class="download-progress-bar">
-                            <div class="download-progress-fill indeterminate"></div>
-                        </div>`;
-                    }
-                }
-
-                const folderIcon = download.completed && download.filePath
-                    ? `<div class="download-folder-icon" title="Show in Finder">${createIcon(icons.folder, 14)}</div>`
-                    : '';
-
-                itemEl.innerHTML = `
-                    <div class="download-header">
-                        <div class="download-name">${download.filename}</div>
-                        ${folderIcon}
-                    </div>
-                    ${progressBarHtml}
-                    <div class="download-info">
-                        ${statusText}
-                        ${percentText ? `<span class="download-size">${percentText}</span>` : ''}
-                        ${timeText ? `<span class="download-time">${timeText}</span>` : ''}
-                    </div>
-                `;
-
-                itemEl.addEventListener('contextmenu', (e) => showContextMenu(e, download));
-
-                if (download.completed && download.filePath) {
-                    const folderIconEl = itemEl.querySelector('.download-folder-icon');
-                    if (folderIconEl) {
-                        folderIconEl.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            window.ipc.postMessage(JSON.stringify({
-                                action: 'reveal_in_finder',
-                                filePath: download.filePath
-                            }));
-                        });
-                    }
-                }
-
+                itemEl.innerHTML = getDownloadHtml(download);
+                bindDownloadEvents(itemEl, download);
                 listEl.appendChild(itemEl);
             });
         }

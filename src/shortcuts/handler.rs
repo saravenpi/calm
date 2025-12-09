@@ -1,5 +1,8 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
-use tao::{event_loop::{ControlFlow, EventLoopWindowTarget}, window::WindowId};
+use tao::{
+    event_loop::{ControlFlow, EventLoopWindowTarget},
+    window::WindowId,
+};
 
 use crate::{config::Config, debug_log, window::BrowserWindowComponents};
 
@@ -54,7 +57,9 @@ impl ShortcutManager {
                 ) {
                     Ok(new_components) => {
                         let new_window_id = new_components.window.id();
-                        windows_ref.borrow_mut().insert(new_window_id, new_components);
+                        windows_ref
+                            .borrow_mut()
+                            .insert(new_window_id, new_components);
                         *focused_window_id.borrow_mut() = Some(new_window_id);
                     }
                     Err(e) => {
@@ -64,23 +69,29 @@ impl ShortcutManager {
             }
             Shortcut::CloseTab => {
                 debug_log!("Shortcut: CloseTab (Cmd+W)");
-                let tab_count = components.tab_manager.borrow().get_tab_count();
-                debug_log!("Current tab count: {}", tab_count);
-
-                if tab_count <= 1 {
-                    debug_log!("Last tab - closing window");
-                    components.window.set_visible(false);
-                    let window_id = components.window.id();
-                    windows_ref.borrow_mut().remove(&window_id);
-                    if focused_window_id.borrow().as_ref() == Some(&window_id) {
-                        *focused_window_id.borrow_mut() = None;
+                
+                // Always close the current tab
+                if let Some(tab_id) = components.tab_manager.borrow().get_active_tab_id() {
+                    debug_log!("Closing tab {}", tab_id);
+                    components.tab_manager.borrow_mut().close_tab(tab_id);
+                    
+                    // Check if we have any tabs left
+                    let tab_count = components.tab_manager.borrow().get_tab_count();
+                    debug_log!("Tabs remaining: {}", tab_count);
+                    
+                    if tab_count == 0 {
+                        // No tabs left - create a new one with default URL
+                        debug_log!("No tabs remaining - creating new tab with default URL");
+                        let config = components.config.borrow();
+                        let default_url = crate::convert_file_url(&config.default_url);
+                        drop(config);
+                        
+                        if let Ok(_) = components.tab_manager.borrow_mut().create_tab(&components.window, &default_url) {
+                            debug_log!("Created new default tab");
+                        }
                     }
-                } else {
-                    debug_log!("Multiple tabs - closing current tab");
-                    if let Some(tab_id) = components.tab_manager.borrow().get_active_tab_id() {
-                        components.tab_manager.borrow_mut().close_tab(tab_id);
-                        let _ = components.tab_bar_webview.evaluate_script("window.refreshTabs();");
-                    }
+                    
+                    let _ = components.tab_bar_webview.evaluate_script("window.refreshTabs();");
                 }
             }
             Shortcut::Reload => {
@@ -94,7 +105,11 @@ impl ShortcutManager {
             }
             Shortcut::ToggleDownloads => {
                 debug_log!("Shortcut: ToggleDownloads");
-                if components.toggle_downloads_debouncer.borrow_mut().should_execute() {
+                if components
+                    .toggle_downloads_debouncer
+                    .borrow_mut()
+                    .should_execute()
+                {
                     let should_show = {
                         let mut is_visible = components.sidebar_visible.borrow_mut();
                         *is_visible = !*is_visible;
@@ -104,27 +119,44 @@ impl ShortcutManager {
                     if should_show {
                         let _ = components.download_overlay.set_visible(true);
                         std::thread::sleep(std::time::Duration::from_millis(10));
-                        components.tab_manager.borrow_mut().resize_all_tabs(&components.window);
+                        components
+                            .tab_manager
+                            .borrow_mut()
+                            .resize_all_tabs(&components.window);
                         let _ = components.download_overlay.focus();
                         let _ = components.download_overlay.set_bounds(wry::Rect {
                             position: tao::dpi::LogicalPosition::new(
                                 components.window.inner_size().width as i32 - 360,
                                 0,
-                            ).into(),
-                            size: tao::dpi::LogicalSize::new(360, components.window.inner_size().height).into(),
+                            )
+                            .into(),
+                            size: tao::dpi::LogicalSize::new(
+                                360,
+                                components.window.inner_size().height,
+                            )
+                            .into(),
                         });
                     } else {
                         let _ = components.download_overlay.set_visible(false);
-                        components.tab_manager.borrow_mut().resize_all_tabs(&components.window);
+                        components
+                            .tab_manager
+                            .borrow_mut()
+                            .resize_all_tabs(&components.window);
                     }
                 }
             }
             Shortcut::ToggleSplitView => {
                 debug_log!("Shortcut: ToggleSplitView");
-                let _ = components.tab_manager.borrow_mut().toggle_split_view(&components.window);
+                let _ = components
+                    .tab_manager
+                    .borrow_mut()
+                    .toggle_split_view(&components.window);
 
                 let ui_state = components.tab_manager.borrow().get_split_ui_state();
-                let orientation_str = ui_state.active_group_orientation.as_deref().unwrap_or("vertical");
+                let orientation_str = ui_state
+                    .active_group_orientation
+                    .as_deref()
+                    .unwrap_or("vertical");
                 let groups_json = components.tab_manager.borrow().get_split_groups_json();
                 let script = format!(
                     "if (window.updateSplitUIState) {{ window.updateSplitUIState({}, {}, '{}'); }} if (window.setSplitGroups) {{ window.setSplitGroups({}); }}",
@@ -135,7 +167,9 @@ impl ShortcutManager {
                 );
                 let _ = components.tab_bar_webview.evaluate_script(&script);
 
-                let _ = components.tab_bar_webview.evaluate_script("window.refreshTabs();");
+                let _ = components
+                    .tab_bar_webview
+                    .evaluate_script("window.refreshTabs();");
             }
             Shortcut::FocusSidebar => {
                 debug_log!("Shortcut: FocusSidebar");
@@ -145,7 +179,9 @@ impl ShortcutManager {
             }
             Shortcut::Find => {
                 debug_log!("Shortcut: Find");
-                if let Some(active_webview) = components.tab_manager.borrow().get_active_tab_webview() {
+                if let Some(active_webview) =
+                    components.tab_manager.borrow().get_active_tab_webview()
+                {
                     let _ = active_webview.evaluate_script("window.calmStartSearch();");
                 }
             }

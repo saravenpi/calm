@@ -1,10 +1,11 @@
 use std::time::Instant;
 use wry::WebView;
+use std::rc::Rc;
 
 #[allow(dead_code)]
 pub enum TabState {
     Unloaded { url: String },
-    Loaded { webview: WebView, url: String },
+    Loaded { webview: Rc<WebView>, url: String },
     Suspended { url: String, title: Option<String> },
 }
 
@@ -20,10 +21,13 @@ pub struct Tab {
 
 impl Tab {
     /// Creates a new tab with the given URL and webview.
-    pub fn new(id: usize, url: String, webview: WebView) -> Self {
+    pub fn new(id: usize, url: String, webview: Rc<WebView>) -> Self {
         Self {
             id,
-            state: TabState::Loaded { url: url.clone(), webview },
+            state: TabState::Loaded {
+                url: url.clone(),
+                webview,
+            },
             title: None,
             last_accessed: Instant::now(),
         }
@@ -42,7 +46,7 @@ impl Tab {
 
     /// Loads the tab by creating its webview.
     #[allow(dead_code)]
-    pub fn load(&mut self, webview: WebView) {
+    pub fn load(&mut self, webview: Rc<WebView>) {
         if let TabState::Unloaded { url } = &self.state {
             let url = url.clone();
             self.state = TabState::Loaded { url, webview };
@@ -54,10 +58,13 @@ impl Tab {
     #[allow(dead_code)]
     pub fn suspend(&mut self) {
         if matches!(self.state, TabState::Loaded { .. }) {
-            let old_state = std::mem::replace(&mut self.state, TabState::Suspended {
-                url: String::new(),
-                title: None,
-            });
+            let old_state = std::mem::replace(
+                &mut self.state,
+                TabState::Suspended {
+                    url: String::new(),
+                    title: None,
+                },
+            );
 
             if let TabState::Loaded { url, webview: _ } = old_state {
                 self.state = TabState::Suspended {
@@ -98,9 +105,13 @@ impl Tab {
     /// Updates the tab's current URL.
     pub fn set_url(&mut self, url: String) {
         match &mut self.state {
-            TabState::Loaded { url: current_url, .. } => *current_url = url,
+            TabState::Loaded {
+                url: current_url, ..
+            } => *current_url = url,
             TabState::Unloaded { url: current_url } => *current_url = url,
-            TabState::Suspended { url: current_url, .. } => *current_url = url,
+            TabState::Suspended {
+                url: current_url, ..
+            } => *current_url = url,
         }
     }
 

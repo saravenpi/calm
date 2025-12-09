@@ -13,7 +13,22 @@ pub fn get_tracking_blocker() -> &'static str {
             'crazyegg.com', 'luckyorange.com', 'clicktale.com', 'inspectlet.com',
             'quantserve.com', 'mixpanel.com', 'segment.com', 'fullstory.com',
             'heap.io', 'amplitude.com', 'chartbeat.com', 'optimizely.com',
-            'tiktok.com/i18n/pixel', 'ads.tiktok.com', 'analytics.tiktok.com'
+            'tiktok.com/i18n/pixel', 'ads.tiktok.com', 'analytics.tiktok.com',
+            'sentry.io', 'bugsnag.com', 'loggly.com', 'splunk.com',
+            'clarity.ms', 't.clarity.ms', 'datadoghq.com', 'browser-intake-datadoghq.com',
+            'tealiumiq.com', 'tags.tiqcdn.com', 'krxd.net', 'bluekai.com',
+            'moatads.com', 'z.moatads.com', 'px.moatads.com',
+            'reddit.com/api/v1/ads', 'events.redditmedia.com', 'alb.reddit.com',
+            'snapchat.com/px', 'tr.snapchat.com', 'ct.pinterest.com',
+            'instagram.com/logging', 'i.instagram.com/api/v1/ads',
+            'linkedin.com/px', 'dc.ads.linkedin.com', 'snap.licdn.com',
+            'twitter.com/i/adsct', 't.co/i/adsct',
+            'youtube.com/ptracking', 'youtube.com/api/stats/atr', 'youtube.com/api/stats/ads',
+            'appsflyer.com', 'adjust.com', 'branch.io', 'singular.net', 'kochava.com',
+            'braze.com', 'customer.io', 'intercom.io', 'drift.com',
+            'zendesk.com', 'zopim.com', 'assets.zendesk.com',
+            'sumo.com', 'collectors.sumologic.com', 'instana.io',
+            'launchdarkly.com', 'vwo.com', 'ab-tasty.com'
         ];
 
         const isTracking = (url) => trackingDomains.some(domain => url.includes(domain));

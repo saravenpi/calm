@@ -15,9 +15,13 @@ pub fn get_settings_html() -> String {
                 image-rendering: crisp-edges;
             }}
 
+            html {{
+                background: #101010 !important;
+            }}
+
             body {{{{
                 {}
-                background: #101010;
+                background: #101010 !important;
                 color: #e8e8e8;
                 padding: 180px 40px 60px 40px;
                 line-height: 1.6;
@@ -28,6 +32,7 @@ pub fn get_settings_html() -> String {
             .settings-container {{
                 max-width: 720px;
                 margin: 0 auto;
+                margin-bottom: 120px;
             }}
 
             h1 {{
@@ -281,27 +286,31 @@ pub fn get_settings_html() -> String {
             }}
 
             .save-indicator {{
-                display: inline-block;
-                margin-left: 16px;
+                position: fixed;
+                top: 24px;
+                right: 24px;
                 color: #4ade80;
                 font-size: 14px;
                 font-family: 'gohu', monospace;
                 opacity: 0;
                 padding: 12px 20px;
-                background: rgba(74, 222, 128, 0.1);
-                border: 1px solid rgba(74, 222, 128, 0.3);
-                transform: translateX(-20px);
-                transition: opacity 0.3s ease, transform 0.3s ease;
+                background: rgba(74, 222, 128, 0.15);
+                border: 1px solid rgba(74, 222, 128, 0.4);
+                z-index: 10000;
+                pointer-events: none;
+                transform: translateY(-10px);
+                transition: opacity 0.2s ease, transform 0.2s ease;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             }}
 
             .save-indicator.show {{
                 opacity: 1;
-                transform: translateX(0);
+                transform: translateY(0);
             }}
 
             .save-indicator.hide {{
                 opacity: 0;
-                transform: translateX(-20px);
+                transform: translateY(-10px);
             }}
 
             .save-section {{{{
@@ -510,6 +519,18 @@ pub fn get_settings_html() -> String {
                 }
             }
 
+            function handleGlobalKeydown(e) {
+                if (!recordingKey) return;
+                
+                // Prevent default browser actions for ALL keys while recording
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+
+                recordShortcut(e, recordingKey);
+                return false;
+            }
+
             function startRecording(key) {
                 if (recordingKey && recordingKey !== key) {
                     stopRecording(recordingKey);
@@ -520,43 +541,56 @@ pub fn get_settings_html() -> String {
                 input.classList.add('recording');
                 input.value = 'Press keys...';
                 input.focus();
+                
+                // Add capturing listener to intercept everything
+                window.addEventListener('keydown', handleGlobalKeydown, true);
             }
 
             function stopRecording(key) {
                 const input = document.getElementById(`shortcut-${key}`);
-                input.classList.remove('recording');
-                input.value = shortcuts[key] || '';
+                if (input) {
+                    input.classList.remove('recording');
+                    input.value = shortcuts[key] || '';
+                }
                 recordingKey = null;
+                window.removeEventListener('keydown', handleGlobalKeydown, true);
             }
 
             function recordShortcut(e, key) {
-                if (!recordingKey || recordingKey !== key) return;
-
-                e.preventDefault();
-                e.stopPropagation();
-
                 const modifiers = [];
                 if (e.metaKey || e.key === 'Meta') modifiers.push('Cmd');
                 if (e.ctrlKey || e.key === 'Control') modifiers.push('Ctrl');
                 if (e.altKey || e.key === 'Alt') modifiers.push('Alt');
                 if (e.shiftKey || e.key === 'Shift') modifiers.push('Shift');
 
-                if (!['Meta', 'Control', 'Alt', 'Shift'].includes(e.key)) {
-                    let keyName = e.key;
-                    if (keyName.length === 1) {
-                        keyName = keyName.toUpperCase();
-                    }
-
-                    const shortcut = modifiers.length > 0
-                        ? `${modifiers.join('+')}+${keyName}`
-                        : keyName;
-
-                    shortcuts[key] = shortcut;
-                    const input = document.getElementById(`shortcut-${key}`);
-                    input.value = shortcut;
-                    stopRecording(key);
-                    detectConflicts();
+                // Don't record if only modifiers are pressed
+                if (['Meta', 'Control', 'Alt', 'Shift'].includes(e.key)) {
+                    return;
                 }
+
+                let keyName = e.key;
+                if (keyName.length === 1) {
+                    keyName = keyName.toUpperCase();
+                } else if (keyName === ' ') {
+                    keyName = 'Space';
+                }
+
+                const shortcut = modifiers.length > 0
+                    ? `${modifiers.join('+')}+${keyName}`
+                    : keyName;
+
+                shortcuts[key] = shortcut;
+                const input = document.getElementById(`shortcut-${key}`);
+                input.value = shortcut;
+                
+                // We must remove listener before calling stopRecording to avoid recursion if logic changes
+                window.removeEventListener('keydown', handleGlobalKeydown, true);
+                
+                stopRecording(key);
+                detectConflicts();
+                
+                // Trigger auto-save
+                debouncedSaveSettings();
             }
 
             function saveSettings() {
@@ -569,6 +603,8 @@ pub fn get_settings_html() -> String {
                 const settings = {
                     defaultUrl: document.getElementById('default-url').value,
                     searchEngine: document.getElementById('search-engine').value,
+                    youtubeRedirect: document.getElementById('youtube-redirect').checked,
+                    invidiousInstance: document.getElementById('invidious-instance').value,
                     vimMode: document.getElementById('vim-mode').checked,
                     uiSounds: document.getElementById('ui-sounds').checked,
                     blockTrackers: document.getElementById('block-trackers').checked,
@@ -587,16 +623,13 @@ pub fn get_settings_html() -> String {
                 window.ipc.postMessage(message);
 
                 const indicator = document.getElementById('save-indicator');
-                indicator.textContent = 'Saved - Restart required';
+                indicator.textContent = '✓ Settings Saved';
                 indicator.classList.remove('hide');
                 indicator.classList.add('show');
                 setTimeout(() => {
                     indicator.classList.remove('show');
                     indicator.classList.add('hide');
-                    setTimeout(() => {
-                        indicator.textContent = 'Saved';
-                    }, 300);
-                }, 3000);
+                }, 2000);
             }
 
             function loadSettings() {
@@ -605,6 +638,25 @@ pub fn get_settings_html() -> String {
                     action: 'load_settings'
                 });
                 window.ipc.postMessage(message);
+            }
+
+            function clearHistory() {
+                const button = document.getElementById('clear-history-btn');
+                button.textContent = 'Clearing...';
+                button.disabled = true;
+
+                const message = JSON.stringify({
+                    action: 'clear_history'
+                });
+                window.ipc.postMessage(message);
+
+                setTimeout(() => {
+                    button.textContent = 'Cleared!';
+                    setTimeout(() => {
+                        button.textContent = 'Clear History';
+                        button.disabled = false;
+                    }, 1500);
+                }, 300);
             }
 
             function checkForUpdates() {
@@ -715,6 +767,14 @@ pub fn get_settings_html() -> String {
                     console.log('Setting search engine to:', settings.searchEngine);
                     document.getElementById('search-engine').value = settings.searchEngine;
                 }
+                if (settings.youtubeRedirect !== undefined) {
+                    console.log('Setting YouTube redirect to:', settings.youtubeRedirect);
+                    document.getElementById('youtube-redirect').checked = settings.youtubeRedirect;
+                }
+                if (settings.invidiousInstance) {
+                    console.log('Setting Invidious instance to:', settings.invidiousInstance);
+                    document.getElementById('invidious-instance').value = settings.invidiousInstance;
+                }
                 if (settings.vimMode !== undefined) {
                     console.log('Setting vim mode to:', settings.vimMode);
                     document.getElementById('vim-mode').checked = settings.vimMode;
@@ -747,7 +807,29 @@ pub fn get_settings_html() -> String {
                 }
             };
 
-            window.addEventListener('load', loadSettings);
+            let saveTimeout = null;
+            function debouncedSaveSettings() {
+                if (saveTimeout) clearTimeout(saveTimeout);
+                saveTimeout = setTimeout(saveSettings, 1000);
+            }
+
+            // Auto-save listeners
+            window.addEventListener('load', function() {
+                loadSettings();
+
+                // Attach listeners to all inputs
+                const textInputs = ['default-url', 'search-engine', 'invidious-instance'];
+                textInputs.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.addEventListener('input', debouncedSaveSettings);
+                });
+
+                const checkboxes = ['youtube-redirect', 'vim-mode', 'ui-sounds', 'block-trackers', 'block-fingerprinting', 'block-cookies'];
+                checkboxes.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.addEventListener('change', saveSettings);
+                });
+            });
 
             let isTabActive = true;
             let faviconTransitionTimeout = null;
@@ -875,6 +957,33 @@ pub fn get_settings_html() -> String {
                 </div>
                 <div class="setting-control">
                     <input type="text" id="search-engine" placeholder="https://start.duckduckgo.com/?q={{}}">
+                </div>
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">Browsing History</div>
+                    <div class="setting-description">Clear all browsing history from command prompt suggestions</div>
+                </div>
+                <div class="setting-control">
+                    <button id="clear-history-btn" onclick="clearHistory()">Clear History</button>
+                </div>
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">YouTube to Invidious</div>
+                    <div class="setting-description">Automatically redirect YouTube links to privacy-friendly Invidious</div>
+                </div>
+                <div class="setting-control">
+                    <input type="checkbox" id="youtube-redirect">
+                </div>
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">Invidious Instance</div>
+                    <div class="setting-description">Custom Invidious instance domain (e.g., yewtu.be)</div>
+                </div>
+                <div class="setting-control">
+                    <input type="text" id="invidious-instance" placeholder="yewtu.be">
                 </div>
             </div>
         </div>
@@ -1092,12 +1201,6 @@ pub fn get_settings_html() -> String {
         </div>
 
         <div class="save-section">
-            <button onclick="saveSettings()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges" style="display: inline-block; vertical-align: middle; margin-right: 8px;">
-                    <path d="M4 2h14v2H4v16h2v-6h12v6h2V6h2v16H2V2h2zm4 18h8v-4H8v4zM20 6h-2V4h2v2zM6 6h9v4H6V6z"/>
-                </svg>
-                Save Settings
-            </button>
             <span class="save-indicator" id="save-indicator">Saved</span>
         </div>
     </div>
